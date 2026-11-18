@@ -41,7 +41,7 @@ namespace Operations.Client
                 }
                 source.name = "OperationsTab";
 
-                var lt = source.GetComponentInChildren<LocalizedText>(true);
+                EFT.UI.LocalizedText lt = source.GetComponentInChildren<EFT.UI.LocalizedText>(true);
                 if (lt != null) lt.LocalizationKey = "";
                 TMP_Text text = source.GetComponentInChildren<TMP_Text>(true);
                 if (text != null) text.text = "OPERATIONS";
@@ -50,7 +50,7 @@ namespace Operations.Client
                 Image icon = FindIcon(source);
                 if (icon != null) icon.sprite = _sprite;
 
-                AnimatedToggle toggle = source.GetComponentInChildren<AnimatedToggle>(true);
+                EFT.UI.AnimatedToggle toggle = source.GetComponentInChildren<EFT.UI.AnimatedToggle>(true);
                 if (toggle == null) { if (cloned) UnityEngine.Object.Destroy(source); return false; }
                 toggle.onValueChanged.RemoveAllListeners(); // drops Fika's "download profile" action
                 toggle.onValueChanged.AddListener(isOn =>
