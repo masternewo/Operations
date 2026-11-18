@@ -1,16 +1,11 @@
-# Operations — client plugin
+# Operations Client (v0.2.0)
 
-BepInEx plugin for **SPT 3.11.x / EFT 0.16.x** that shows the server-side *Operations* (missions) module of
-EconomyGuard 1.6.0 inside the game: rank and points, active missions, the military-letter briefing, and a banner
-when a new mission appears.
+BepInEx client plugin for SPT 3.11.1 / Fika. Pairs with the EconomyGuard Enterprise server mod (Operations module).
 
-* Press **F10** (configurable) in the main menu or in raid.
-* Install: put `Operations.Client.dll` in `BepInEx/plugins/`. The server mod `SPT-EconomyGuard` ≥ 1.6.0 must be installed.
-* Build: GitHub Actions builds the DLL on every push (Actions → build → artifact), or locally `dotnet build -c Release`.
+- **OPERATIONS tab** in the bottom bar (replaces Fika's "Download Profile" tab) with an unread badge.
+- **Top-right alert icon** for priority orders / an assembled squad; click opens the order directly.
+- **Mission screen**: orders are shown as CONFIDENTIAL until you press OPEN FILE; dossier with objectives, rewards, issued equipment, briefing image.
+- **Squad briefing**: when all members are online the commander starts a synchronized countdown; members are told to join voice chat with the commander first.
+- Fallback hotkey F10 (configurable). Menu only; hidden in raid.
 
-## Status
-v0.1.0 — **not yet tested in a real game.** It is a plain IMGUI overlay (no EFT-internal UI hooks), so it should not
-conflict with other mods, but check `BepInEx/LogOutput.log` for `Operations.Client loaded`.
-Not included yet: video/audio/image briefings, the multiplayer lobby, one-click Fika join.
-Text uses Unity's default font, which cannot shape Persian/Arabic: keep in-game mission text in English
-(the admin's *In-game text language* setting).
+Install: put `Operations.Client.dll` in `BepInEx/plugins/`. Download it from the latest GitHub Actions run (artifact `Operations.Client`).
