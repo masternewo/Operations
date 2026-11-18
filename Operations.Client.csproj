@@ -1,20 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- BepInEx plugin for SPT 3.11.x (EFT 0.16.x, Unity 2019.4). Output: Operations.Client.dll -->
+  <!-- BepInEx plugin for SPT 3.11.x (EFT 0.16.x, Unity 2019.4). Output: Operations.Client.dll
+       lib/ holds compile-time references only (hollowed game assembly + SPT/Unity libraries); nothing from lib/ is shipped. -->
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <LangVersion>9.0</LangVersion>
+    <LangVersion>11.0</LangVersion>
     <AssemblyName>Operations.Client</AssemblyName>
     <RootNamespace>Operations.Client</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <DebugType>none</DebugType>
-    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BepInEx.Core" Version="5.*" IncludeAssets="compile" />
+    <PackageReference Include="BepInEx.Core" Version="5.*" />
     <PackageReference Include="UnityEngine.Modules" Version="2019.4.39" IncludeAssets="compile" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" IncludeAssets="compile" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
-    <!-- compile-time only: the game already ships these at runtime -->
+    <Reference Include="Assembly-CSharp" HintPath="lib\hollowed.dll" Private="false" />
+    <Reference Include="Comfort" HintPath="lib\Comfort.dll" Private="false" />
+    <Reference Include="Comfort.Unity" HintPath="lib\Comfort.Unity.dll" Private="false" />
+    <Reference Include="CommonExtensions" HintPath="lib\CommonExtensions.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="lib\Newtonsoft.Json.dll" Private="false" />
     <Reference Include="spt-common" HintPath="lib\spt-common.dll" Private="false" />
+    <Reference Include="spt-reflection" HintPath="lib\spt-reflection.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="lib\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="lib\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="lib\UnityEngine.UI.dll" Private="false" />
   </ItemGroup>
 </Project>
