@@ -1,5 +1,6 @@
 name: build
 on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
+permissions: { contents: write }
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,3 +13,9 @@ jobs:
         with:
           name: Operations.Client
           path: out/Operations.Client.dll
+      - name: Publish latest release
+        if: github.event_name == 'push'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/Operations.Client.dll --title "Operations Client (latest build)" --notes "Auto-built from ${{ github.sha }}. Put the DLL in BepInEx/plugins/"
