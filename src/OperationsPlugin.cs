@@ -15,7 +15,6 @@ namespace Operations.Client
         internal static ManualLogSource Log;
         internal static OperationsPlugin Instance;
 
-        private ConfigEntry<KeyCode> _hotkey;
         private ConfigEntry<float> _pollSeconds;
         private OpsScreen _screen;
         private AlertIcon _alert;
@@ -28,7 +27,6 @@ namespace Operations.Client
         private void Awake()
         {
             Log = Logger; Instance = this;
-            _hotkey = Config.Bind("General", "Hotkey", KeyCode.F10, "Opens the Operations screen (fallback to the menu tab).");
             _pollSeconds = Config.Bind("General", "PollSeconds", 10f, "How often the server is asked for new orders (menu only).");
             _tab = new TabBinder(OpenScreen);
             Log.LogInfo("Operations client loaded.");
@@ -65,7 +63,6 @@ namespace Operations.Client
                 return;
             }
 
-            if (Input.GetKeyDown(_hotkey.Value)) { if (_screen.IsOpen) _screen.Hide(); else OpenScreen(); }
             if (_screen.IsOpen && Input.GetKeyDown(KeyCode.Escape)) _screen.Hide();
 
             if (!_tab.Bound && Time.unscaledTime >= _nextBind) { _nextBind = Time.unscaledTime + 1f; _tab.TryBind(); }
