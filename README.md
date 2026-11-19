@@ -1,10 +1,10 @@
-# Operations Client (v0.2.0)
+# Operations Client (v0.3.0)
 
 BepInEx client plugin for SPT 3.11.1 / Fika. Pairs with the EconomyGuard Enterprise server mod (Operations module).
 
-- **OPERATIONS tab** in the bottom bar (replaces Fika's "Download Profile" tab) with an unread badge.
-- **Top-right alert icon** for priority orders / an assembled squad; click opens the order directly.
-- **Mission screen**: orders are shown as CONFIDENTIAL until you press OPEN FILE; dossier with objectives, rewards, issued equipment, briefing image.
+- **OPERATIONS tab** replaces Fika's "Download Profile" tab (managed by the game's own menu bar) with an unread badge.
+- **Top-right HUD tag** for priority orders / an assembled squad; click opens the order.
+- **Mission screen**: CONFIDENTIAL until OPEN FILE; dossier with objectives, rewards, equipment, briefing image, status, and ACCEPT TASK / CLAIM REWARD buttons (through the game's own quest controller).
 - **Squad briefing**: when all members are online the commander starts a synchronized countdown; members are told to join voice chat with the commander first.
 - No hotkey: open it from the tab or the alert icon; ESC closes. Menu only; hidden in raid.
 
