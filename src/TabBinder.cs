@@ -6,75 +6,90 @@ using UnityEngine.UI;
 namespace Operations.Client
 {
     /// <summary>
-    /// Puts an OPERATIONS tab into the bottom menu bar. If Fika's "Download Profile" tab (a re-purposed Watchlist tab) exists it is
-    /// converted; otherwise the Flea Market tab is cloned the same way Fika does it. The tab carries a green unread badge like the other tabs.
+    /// Turns Fika's "Download Profile" tab into the OPERATIONS tab. That tab is registered with the game's own MenuTaskBar
+    /// (EMenuType.NewsHub), so the game keeps enabling/disabling it correctly (greyed out and "not available in raid").
+    /// Fika creates it a moment after the menu bar wakes up, so the binder keeps polling instead of cloning another tab
+    /// (a clone is unmanaged and stays disabled). Without Fika the stock Watchlist tab is used.
     /// </summary>
     internal sealed class TabBinder
     {
         private const string Tabs = "Preloader UI/Preloader UI/BottomPanel/Content/TaskBar/Tabs/";
-        private GameObject _tab;
-        private TextMeshProUGUI _badgeText;
-        private GameObject _badge;
-        private Sprite _sprite;
         private readonly Action _onClick;
-        private int _lastCount = -1;
+        private GameObject _tab, _badge;
+        private TextMeshProUGUI _badgeText;
+        private Sprite _sprite;
+        private float _waitStart = -1f;
+        private int _count;
+        private bool _wasBound;
 
         public TabBinder(Action onClick) { _onClick = onClick; }
 
-        public bool Bound { get { return _tab != null; } }
+        public bool Bound
+        {
+            get
+            {
+                if (_tab == null && _wasBound) { _wasBound = false; _badge = null; _waitStart = -1f; } // menu rebuilt (after a raid): bind again
+                return _tab != null;
+            }
+        }
 
         public bool TryBind()
         {
-            if (_tab != null) return true;
+            if (Bound) return true;
             try
             {
-                GameObject source = GameObject.Find(Tabs + "DownloadProfile");
-                bool cloned = false;
-                if (source == null)
+                GameObject src = GameObject.Find(Tabs + "DownloadProfile");
+                if (src == null)
                 {
-                    GameObject flea = GameObject.Find(Tabs + "FleaMarket");
-                    if (flea == null) return false;
-                    source = UnityEngine.Object.Instantiate(flea);
-                    source.transform.SetParent(flea.transform.parent, false);
-                    source.transform.SetSiblingIndex(10);
-                    cloned = true;
+                    if (GameObject.Find(Tabs + "FleaMarket") == null) return false; // menu bar not built yet
+                    if (_waitStart < 0f) _waitStart = Time.unscaledTime;
+                    if (Time.unscaledTime - _waitStart < 20f) return false;          // give Fika time to create its tab
+                    src = GameObject.Find(Tabs + "Watchlist");
+                    if (src == null) return false;
                 }
-                source.name = "OperationsTab";
 
-                EFT.UI.LocalizedText lt = source.GetComponentInChildren<EFT.UI.LocalizedText>(true);
+                EFT.UI.AnimatedToggle toggle = src.GetComponentInChildren<EFT.UI.AnimatedToggle>(true);
+                if (toggle == null) return false;
+
+                src.name = "OperationsTab";
+                EFT.UI.LocalizedText lt = src.GetComponentInChildren<EFT.UI.LocalizedText>(true);
                 if (lt != null) lt.LocalizationKey = "";
-                TMP_Text text = source.GetComponentInChildren<TMP_Text>(true);
-                if (text != null) text.text = "OPERATIONS";
+                TMP_Text label = src.GetComponentInChildren<TMP_Text>(true);
+                if (label != null) label.text = "OPERATIONS";
 
                 if (_sprite == null) _sprite = UiKit.MakeIcon(0);
-                Image icon = FindIcon(source);
-                if (icon != null) icon.sprite = _sprite;
+                Image icon = FindIcon(src);
+                if (icon != null) { icon.sprite = _sprite; icon.preserveAspect = true; }
 
-                EFT.UI.AnimatedToggle toggle = source.GetComponentInChildren<EFT.UI.AnimatedToggle>(true);
-                if (toggle == null) { if (cloned) UnityEngine.Object.Destroy(source); return false; }
                 toggle.onValueChanged.RemoveAllListeners(); // drops Fika's "download profile" action
                 toggle.onValueChanged.AddListener(isOn =>
                 {
                     if (!isOn) return;
-                    toggle.SetIsOnWithoutNotify(false); // behave like a button, not a menu page
+                    toggle.SetIsOnWithoutNotify(false); // behaves like a button, not like a menu page
                     _onClick();
                 });
 
-                _badge = BuildBadge(source.transform);
-                _tab = source;
-                _lastCount = -1;
-                OperationsPlugin.Log.LogInfo("Operations tab bound (" + (cloned ? "cloned Flea Market tab" : "converted Fika Download Profile tab") + ").");
+                _badge = BuildBadge(src.transform);
+                _tab = src; _wasBound = true;
+                ApplyCount();
+                OperationsPlugin.Log.LogInfo("Operations tab bound to '" + src.name + "'.");
                 return true;
             }
             catch (Exception e)
             {
-                OperationsPlugin.Log.LogWarning("Operations tab not bound: " + e.Message);
+                OperationsPlugin.Log.LogWarning("Operations tab not bound yet: " + e.Message);
                 return false;
             }
         }
 
         private static Image FindIcon(GameObject tab)
         {
+            // Fika's layout: Tab / Button / Icon(Image)
+            if (tab.transform.childCount > 0 && tab.transform.GetChild(0).childCount > 0)
+            {
+                Image direct = tab.transform.GetChild(0).GetChild(0).GetComponent<Image>();
+                if (direct != null) return direct;
+            }
             Image fallback = null;
             foreach (Image i in tab.GetComponentsInChildren<Image>(true))
             {
@@ -84,25 +99,25 @@ namespace Operations.Client
             return fallback;
         }
 
+        /// <summary>Same look as the game's own small green counters above the other tabs.</summary>
         private GameObject BuildBadge(Transform tab)
         {
             Image bg = UiKit.Box(tab, "OperationsBadge", UiKit.Green); bg.raycastTarget = false;
-            UiKit.Anchor(bg.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-34, -4), new Vector2(-2, 14));
-            _badgeText = UiKit.Label(bg.transform, "", 14, Color.black, FontStyles.Bold, TextAlignmentOptions.Center);
+            UiKit.Anchor(bg.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 0), new Vector2(34, 16));
+            _badgeText = UiKit.Label(bg.transform, "", 13, Color.black, FontStyles.Bold, TextAlignmentOptions.Center);
+            _badgeText.enableWordWrapping = false;
             UiKit.Stretch(_badgeText.rectTransform);
             bg.gameObject.SetActive(false);
             return bg.gameObject;
         }
 
-        /// <summary>The tab object disappears when the menu is rebuilt (after a raid): then it has to be bound again.</summary>
-        public void Verify() { if (_tab == null) { _tab = null; _badge = null; } }
+        public void SetCount(int unread) { _count = unread; ApplyCount(); }
 
-        public void SetCount(int unread)
+        private void ApplyCount()
         {
-            if (_tab == null || _badge == null || unread == _lastCount) return;
-            _lastCount = unread;
-            _badge.SetActive(unread > 0);
-            if (_badgeText != null) _badgeText.text = unread > 99 ? ">99" : unread.ToString();
+            if (!Bound || _badge == null) return;
+            _badge.SetActive(_count > 0);
+            if (_badgeText != null) _badgeText.text = _count > 99 ? "> 99" : _count.ToString();
         }
     }
 }

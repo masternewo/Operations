@@ -18,6 +18,9 @@ namespace Operations.Client
             });
         }
 
+        /// <summary>Queue work to run on the main thread (safe to call from any thread, e.g. a Task continuation).</summary>
+        public static void Post(Action a) { Queue.Enqueue(a); }
+
         /// <summary>Call from MonoBehaviour.Update.</summary>
         public static void Pump()
         {

@@ -84,19 +84,19 @@ namespace Operations.Client
             _screen.SetInbox(_inbox);
             _tab.SetCount(_inbox.Enabled ? _inbox.Unread : 0);
 
-            InboxItem pick = null; string text = null; bool critical = false;
+            InboxItem pick = null; string title = null, sub = null; bool critical = false;
             foreach (InboxItem i in _inbox.Items)
             {
-                if (i.Unread && i.Critical) { pick = i; critical = true; text = "PRIORITY ORDER"; break; }
+                if (i.Unread && i.Critical) { pick = i; critical = true; title = "PRIORITY ORDER"; sub = "CLASSIFIED  -  CLICK TO OPEN"; break; }
             }
             if (pick == null)
             {
                 foreach (InboxItem i in _inbox.Items)
                 {
-                    if (i.Squad != null && i.Squad.AllOnline && i.Squad.State == "waiting") { pick = i; text = "SQUAD READY"; break; }
+                    if (i.Squad != null && i.Squad.AllOnline && i.Squad.State == "waiting") { pick = i; title = "SQUAD ASSEMBLED"; sub = "BRIEFING READY  -  CLICK TO OPEN"; break; }
                 }
             }
-            if (pick != null && _inbox.Enabled && !_screen.IsOpen) _alert.Set(pick.Id, critical, text); else _alert.Clear();
+            if (pick != null && _inbox.Enabled && !_screen.IsOpen) _alert.Set(pick.Id, critical, title, sub); else _alert.Clear();
         }
     }
 }

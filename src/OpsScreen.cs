@@ -157,7 +157,7 @@ namespace Operations.Client
 
         private static string StatusText(int s)
         {
-            switch (s) { case 2: return "IN PROGRESS"; case 4: return "COMPLETED"; case 5: return "FAILED"; default: return "NOT ACCEPTED"; }
+            switch (s) { case 2: return "IN PROGRESS"; case 3: return "READY - CLAIM REWARD"; case 4: return "COMPLETED"; case 5: case 6: case 7: return "FAILED"; default: return "NOT ACCEPTED"; }
         }
 
         // ------------------------------------------------------------------------------------------------ dossier
@@ -242,10 +242,11 @@ namespace Operations.Client
             if (!d.Gated) meta += "     MIN LEVEL  " + d.MinLevel + "     SQUAD  " + d.SquadMin + (d.SquadMax != d.SquadMin ? "-" + d.SquadMax : "");
             TextMeshProUGUI mt = UiKit.Label(p, meta, 15, UiKit.Muted); UiKit.Size(mt, 24);
 
+            if (!d.Gated) BuildActions(p, d);
             if (d.Squad != null) BuildSquad(p, d);
             if (d.Gated) { SetStatus("File locked until the squad commander opens the briefing.", false); return; }
 
-            if (!string.IsNullOrEmpty(d.Description)) { TextMeshProUGUI ds = UiKit.Label(p, d.Description, 17, UiKit.Text); }
+            if (!string.IsNullOrEmpty(d.Description) && d.Description != d.Body) { TextMeshProUGUI ds = UiKit.Label(p, d.Description, 17, UiKit.Text); }
 
             if (d.Objectives.Count > 0)
             {
@@ -263,7 +264,7 @@ namespace Operations.Client
 
             if (d.Loadout.Count > 0)
             {
-                UiKit.Section(p, "ISSUED EQUIPMENT  (given when you accept the task)");
+                UiKit.Section(p, "ISSUED EQUIPMENT  (delivered when you accept the task)");
                 var sb = new StringBuilder();
                 foreach (ItemRef r in d.Loadout) sb.Append(Name(r.Tpl)).Append("  x").Append(r.Count).Append('\n');
                 UiKit.Label(p, sb.ToString().TrimEnd(), 16, UiKit.Text);
@@ -272,7 +273,7 @@ namespace Operations.Client
             UiKit.Divider(p);
             UiKit.Section(p, "BRIEFING");
             UiKit.Label(p, "FROM:  " + (d.Sender ?? ""), 15, UiKit.Muted);
-            UiKit.Label(p, "SUBJECT:  " + (d.Subject ?? ""), 15, UiKit.Muted);
+            if (!string.IsNullOrEmpty(d.Subject)) UiKit.Label(p, "SUBJECT:  " + d.Subject, 15, UiKit.Muted);
             TextMeshProUGUI body = UiKit.Label(p, d.Body ?? "", 18, UiKit.Text); body.lineSpacing = 8;
 
             Texture2D tex;
@@ -285,8 +286,47 @@ namespace Operations.Client
                 UiKit.Size(holder, 120, 480, 840);
                 var le = holder.GetComponent<LayoutElement>(); le.flexibleWidth = 0;
             }
-            if (d.Status == 0 || d.Status == 1) UiKit.Label(p, "Take this task from the trader (Tasks screen) to receive the issued equipment and start the objectives.", 14, UiKit.Muted);
             SetStatus("", false);
+        }
+
+        private void BuildActions(Transform p, Dossier d)
+        {
+            if (string.IsNullOrEmpty(d.QuestId)) return;
+            string id = d.Id, qid = d.QuestId;
+            if (d.Status == 0 || d.Status == 1 || d.Status == 6)
+            {
+                Button b = UiKit.Btn(p, d.Status == 0 ? "LOCKED" : "ACCEPT TASK", () => Act(id, qid, false), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                b.interactable = d.Status != 0; UiKit.Size(b, 52, 52, 300);
+                UiKit.Label(p, d.Status == 0 ? "You do not meet the requirements for this task yet (minimum level)." : d.Loadout.Count > 0 ? "Accepting starts the objectives. The issued equipment is delivered to your messages from the task giver." : "Accepting starts the objectives.", 13, UiKit.Muted);
+            }
+            else if (d.Status == 2)
+            {
+                UiKit.Label(p, "TASK ACTIVE  -  complete the objectives in raid, then return here to claim the reward.", 15, UiKit.Green, FontStyles.Bold);
+            }
+            else if (d.Status == 3)
+            {
+                Button b = UiKit.Btn(p, "CLAIM REWARD", () => Act(id, qid, true), UiKit.Shade(UiKit.Green, 0.5f), 20);
+                UiKit.Size(b, 52, 52, 300);
+                UiKit.Label(p, "Objectives complete. Claiming pays the reward (money and items arrive in your messages) and adds your rank points.", 13, UiKit.Muted);
+            }
+            else if (d.Status == 4) UiKit.Label(p, "TASK COMPLETED  -  reward claimed.", 15, UiKit.Green, FontStyles.Bold);
+            else if (d.Status == 5 || d.Status == 7) UiKit.Label(p, "TASK FAILED.", 15, UiKit.Red, FontStyles.Bold);
+        }
+
+        private void Act(string id, string questId, bool finish)
+        {
+            if (_busy) return; _busy = true;
+            SetStatus(finish ? "Claiming reward..." : "Accepting task...", false);
+            Action<string> done = err =>
+            {
+                _busy = false;
+                if (err != null) { SetStatus(err, true); return; }
+                SetStatus(finish ? "Reward claimed." : "Task accepted.", false);
+                _opened.Remove(id);
+                OperationsPlugin.Instance.RequestInboxRefresh();
+                Refresh(id, true);
+            };
+            if (finish) QuestBridge.Finish(questId, done); else QuestBridge.Accept(questId, done);
         }
 
         private void BuildSquad(Transform p, Dossier d)

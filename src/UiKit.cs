@@ -132,36 +132,67 @@ namespace Operations.Client
             return t;
         }
 
-        /// <summary>Procedural icons (no external assets): 0 = dossier, 1 = alert hexagon with exclamation mark.</summary>
-        public static Sprite MakeIcon(int kind, int size = 64)
+        /// <summary>Procedural, anti-aliased icons (no external assets): 0 = dossier, 1 = warning triangle with exclamation mark, 2 = target reticle.</summary>
+        public static Sprite MakeIcon(int kind, int size = 128)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
             var px = new Color32[size * size];
-            float c = (size - 1) / 2f;
+            const int ss = 3; // 3x3 supersampling = smooth edges
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
-                    float dx = (x - c) / c, dy = (y - c) / c; float a = 0f;
-                    if (kind == 1)
-                    {
-                        // hexagon (flat top) with a cut-out exclamation mark
-                        float hx = Mathf.Abs(dx), hy = Mathf.Abs(dy);
-                        bool inHex = hy <= 0.92f && (hx * 0.57735f + hy) <= 0.92f * 1.0f + 0.0f && hx <= 0.98f;
-                        bool bar = Mathf.Abs(dx) < 0.09f && dy > -0.1f && dy < 0.58f;
-                        bool dot = Mathf.Abs(dx) < 0.1f && dy > -0.52f && dy < -0.32f;
-                        a = inHex && !(bar || dot) ? 1f : 0f;
-                    }
-                    else
-                    {
-                        // document with folded corner and text lines
-                        bool body = dx > -0.62f && dx < 0.62f && dy > -0.85f && dy < 0.85f && !(dx > 0.28f && dy > 0.51f && (dx - 0.28f) + (dy - 0.51f) > 0.34f * 0.99f);
-                        bool line = Mathf.Abs(dx) < 0.38f && ((dy > 0.1f && dy < 0.2f) || (dy > -0.15f && dy < -0.05f) || (dy > -0.4f && dy < -0.3f));
-                        a = body && !line ? 1f : 0f;
-                    }
-                    px[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                    int hit = 0;
+                    for (int sy = 0; sy < ss; sy++)
+                        for (int sx = 0; sx < ss; sx++)
+                        {
+                            float dx = ((x + (sx + 0.5f) / ss) / size) * 2f - 1f, dy = ((y + (sy + 0.5f) / ss) / size) * 2f - 1f;
+                            if (Inside(kind, dx, dy)) hit++;
+                        }
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)(255 * hit / (ss * ss)));
                 }
             tex.SetPixels32(px); tex.Apply(false, true);
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        private static bool Inside(int kind, float dx, float dy)
+        {
+            if (kind == 1)
+            {
+                // rounded warning triangle (outline) with a solid exclamation mark
+                float top = 0.88f, bot = -0.72f, half = 0.92f;
+                if (dy > top || dy < bot) return false;
+                float w = half * (top - dy) / (top - bot);               // half width at this height
+                bool outer = Mathf.Abs(dx) <= w;
+                float k = 0.17f;                                           // outline thickness
+                float ti = top - k * 2.1f, bi = bot + k, wi = (half - k * 1.55f) * (ti - dy) / (ti - bi);
+                bool inner = dy <= ti && dy >= bi && Mathf.Abs(dx) <= wi;
+                bool bar = Mathf.Abs(dx) < 0.085f && dy > -0.22f && dy < 0.38f;
+                bool dot = dx * dx + (dy + 0.4f) * (dy + 0.4f) < 0.011f * 1.9f;
+                return (outer && !inner) || (inner && (bar || dot));
+            }
+            if (kind == 2)
+            {
+                // reticle: ring + four ticks + center dot
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                bool ring = r > 0.55f && r < 0.66f;
+                bool ticks = (Mathf.Abs(dx) < 0.05f && Mathf.Abs(dy) > 0.42f && Mathf.Abs(dy) < 0.92f) || (Mathf.Abs(dy) < 0.05f && Mathf.Abs(dx) > 0.42f && Mathf.Abs(dx) < 0.92f);
+                return ring || ticks || r < 0.1f;
+            }
+            // document with folded corner and text lines
+            bool body = dx > -0.6f && dx < 0.6f && dy > -0.84f && dy < 0.84f && !(dx > 0.26f && dy > 0.5f && (dx - 0.26f) + (dy - 0.5f) > 0.34f);
+            bool line = Mathf.Abs(dx) < 0.36f && ((dy > 0.1f && dy < 0.2f) || (dy > -0.15f && dy < -0.05f) || (dy > -0.4f && dy < -0.3f));
+            return body && !line;
+        }
+
+        /// <summary>Thin L-shaped corner marks (HUD style). corner: 0 = top-left, 1 = top-right, 2 = bottom-left, 3 = bottom-right.</summary>
+        public static void Bracket(Transform parent, int corner, Color color, float len = 9f, float thick = 2f)
+        {
+            bool right = corner == 1 || corner == 3, bottom = corner >= 2;
+            Vector2 a = new Vector2(right ? 1 : 0, bottom ? 0 : 1);
+            Image h = Box(parent, "BracketH", color); h.raycastTarget = false;
+            Anchor(h.rectTransform, a, a, new Vector2(right ? -len : 0, bottom ? 0 : -thick), new Vector2(right ? 0 : len, bottom ? thick : 0));
+            Image v = Box(parent, "BracketV", color); v.raycastTarget = false;
+            Anchor(v.rectTransform, a, a, new Vector2(right ? -thick : 0, bottom ? 0 : -len), new Vector2(right ? 0 : thick, bottom ? len : 0));
         }
     }
 }
