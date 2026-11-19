@@ -364,10 +364,14 @@ namespace Operations.Client
 
         private void SyncNow(string id, string qid)
         {
+            if (_busy) return; _busy = true;
             SetStatus("Syncing...", false);
-            string how = QuestBridge.TrySync(qid);
-            if (QuestBridge.Lookup(qid) != -2) { SetStatus("Task loaded.", false); Clear(_dossierContent); if (_opened.TryGetValue(id, out Dossier d)) BuildDossier(d); }
-            else SetStatus("Could not load it live (" + how + "). It appears after your next raid or relog.", true);
+            QuestBridge.TrySync(qid, how =>
+            {
+                _busy = false;
+                if (QuestBridge.Lookup(qid) != -2) { SetStatus("Task loaded.", false); Dossier d; if (id == _selected && _opened.TryGetValue(id, out d)) { Clear(_dossierContent); BuildDossier(d); } }
+                else SetStatus("Could not load it live (" + how + "). It appears after your next raid or relog.", true);
+            });
         }
 
         private void Act(string id, string questId, bool finish)

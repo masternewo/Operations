@@ -68,24 +68,38 @@ namespace Operations.Client
         /// Built on reflection because the game assemblies are obfuscated; every step is logged so a failure shows what to adjust.
         /// Returns a short description of how it ended (for the log / status line).
         /// </summary>
-        public static string TrySync(string questId)
+        public static void TrySync(string questId, Action<string> done)
         {
             try
             {
                 AbstractQuestControllerClass ctl = Controller();
-                if (ctl == null) return "no controller";
+                if (ctl == null) { done("no controller"); return; }
                 object app = Singleton<ClientApplication<ISession>>.Instance;
                 MethodInfo gs = app == null ? null : app.GetType().GetMethod("GetClientBackEndSession", Any);
                 object session = gs != null ? gs.Invoke(app, null) : null;
-                if (session == null) return "no session";
+                if (session == null) { done("no session"); return; }
                 MethodInfo req = null;
                 foreach (MethodInfo m in session.GetType().GetMethods(Any))
                     if (m.Name.IndexOf("QuestsTemplates", StringComparison.OrdinalIgnoreCase) >= 0 && m.GetParameters().Length == 0) { req = m; break; }
-                if (req == null) { OperationsPlugin.Log.LogInfo("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName); return "template request unavailable"; }
-                object res = req.Invoke(session, null);
+                if (req == null) { OperationsPlugin.Log.LogInfo("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName); done("template request unavailable"); return; }
+                object res = req.Invoke(session, null);      // only starts the request; never blocks the game thread
                 var task = res as Task;
-                if (task != null) { if (!task.Wait(4000)) return "timeout"; PropertyInfo rp = task.GetType().GetProperty("Result"); res = rp != null ? rp.GetValue(task, null) : null; }
-                if (res == null) return "empty reply";
+                if (task == null) { Apply(ctl, res, questId, done); return; }
+                task.ContinueWith(t =>
+                {
+                    object payload = null;
+                    try { PropertyInfo rp = t.GetType().GetProperty("Result"); payload = t.IsFaulted ? null : (rp != null ? rp.GetValue(t, null) : null); } catch (Exception) { }
+                    Dispatcher.Post(() => Apply(ctl, payload, questId, done));   // game objects are touched on the main thread only
+                });
+            }
+            catch (Exception e) { OperationsPlugin.Log.LogWarning("TrySync failed: " + e); done("error"); }
+        }
+
+        private static void Apply(AbstractQuestControllerClass ctl, object res, string questId, Action<string> done)
+        {
+            try
+            {
+                if (res == null) { done("empty reply"); return; }
                 foreach (FieldInfo f in ctl.GetType().GetFields(Any))
                 {
                     MethodInfo add = f.FieldType.GetMethod("AddTemplates", Any);
@@ -94,16 +108,18 @@ namespace Operations.Client
                     if (store == null) continue;
                     object arg = res;
                     PropertyInfo inner = res.GetType().GetProperty("Result");
-                    if (!add.GetParameters()[0].ParameterType.IsInstanceOfType(arg) && inner != null) arg = inner.GetValue(res, null);
-                    if (arg == null || !add.GetParameters()[0].ParameterType.IsInstanceOfType(arg)) { OperationsPlugin.Log.LogInfo("TrySync: template payload type " + (arg == null ? "null" : arg.GetType().FullName) + " does not fit AddTemplates"); return "payload mismatch"; }
+                    Type want = add.GetParameters()[0].ParameterType;
+                    if (!want.IsInstanceOfType(arg) && inner != null) arg = inner.GetValue(res, null);
+                    if (arg == null || !want.IsInstanceOfType(arg)) { OperationsPlugin.Log.LogInfo("TrySync: payload type " + (arg == null ? "null" : arg.GetType().FullName) + " does not fit AddTemplates"); done("payload mismatch"); return; }
                     add.Invoke(store, new[] { arg });
                     MethodInfo nq = ctl.GetType().GetMethod("NewQuests", Any);
                     if (nq != null) nq.Invoke(ctl, new object[] { null });
-                    return Lookup(questId) != -2 ? "ok" : "task still unknown";
+                    done(Lookup(questId) != -2 ? "ok" : "task still unknown");
+                    return;
                 }
-                return "no template store";
+                done("no template store");
             }
-            catch (Exception e) { OperationsPlugin.Log.LogWarning("TrySync failed: " + e); return "error"; }
+            catch (Exception e) { OperationsPlugin.Log.LogWarning("TrySync apply failed: " + e); done("error"); }
         }
 
         private static AbstractQuestControllerClass Controller()
