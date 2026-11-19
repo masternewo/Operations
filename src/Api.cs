@@ -9,7 +9,7 @@ namespace Operations.Client
 
     internal sealed class InboxItem
     {
-        public string Id, Level, Label, Map;
+        public string Id, Level, Label, Map, Rev;
         public bool Unread;
         public int Status;
         public SquadFlags Squad;
@@ -19,7 +19,7 @@ namespace Operations.Client
     internal sealed class Inbox
     {
         public bool Enabled;
-        public string Theme = "classic";
+        public string Profile, Theme = "classic";
         public int Unread, Critical;
         public List<InboxItem> Items = new List<InboxItem>();
     }
@@ -39,7 +39,7 @@ namespace Operations.Client
 
     internal sealed class Dossier
     {
-        public string Id, Level, Title, QuestId, Description, Map, Sender, Subject, Body;
+        public string Id, Level, Title, QuestId, Description, Map, Sender, Subject, Body, Rev;
         public int Status, MinLevel, SquadMin = 1, SquadMax = 1, Roubles, Xp, Points;
         public bool Gated;
         public SquadView Squad;
@@ -72,6 +72,7 @@ namespace Operations.Client
             var box = new Inbox();
             if (d == null || d.Type != JTokenType.Object) return box;
             box.Enabled = d.Value<bool?>("enabled") == true;
+            box.Profile = d.Value<string>("profile");
             box.Theme = d.Value<string>("theme") == "modern" ? "modern" : "classic";
             box.Unread = d.Value<int?>("unread") ?? 0;
             box.Critical = d.Value<int?>("critical") ?? 0;
@@ -82,7 +83,7 @@ namespace Operations.Client
                     var it = new InboxItem
                     {
                         Id = i.Value<string>("id"), Level = i.Value<string>("level") ?? "normal", Label = i.Value<string>("label") ?? "",
-                        Unread = i.Value<bool?>("unread") == true, Status = i.Value<int?>("status") ?? 0, Map = i.Value<string>("map")
+                        Unread = i.Value<bool?>("unread") == true, Status = i.Value<int?>("status") ?? 0, Map = i.Value<string>("map"), Rev = i.Value<string>("rev")
                     };
                     JToken sq = i["squad"];
                     if (sq != null && sq.Type == JTokenType.Object)
@@ -128,7 +129,7 @@ namespace Operations.Client
             {
                 Id = d.Value<string>("id"), Level = d.Value<string>("level") ?? "normal", Title = d.Value<string>("title"), QuestId = d.Value<string>("questId"),
                 Status = d.Value<int?>("status") ?? 0, Gated = d.Value<bool?>("gated") == true, Squad = ParseSquad(d["squad"]),
-                Description = d.Value<string>("description"), Map = d.Value<string>("map"), MinLevel = d.Value<int?>("minLevel") ?? 1
+                Description = d.Value<string>("description"), Map = d.Value<string>("map"), Rev = d.Value<string>("rev"), MinLevel = d.Value<int?>("minLevel") ?? 1
             };
             JToken sz = d["squadSize"]; if (sz != null && sz.Type == JTokenType.Object) { o.SquadMin = sz.Value<int?>("min") ?? 1; o.SquadMax = sz.Value<int?>("max") ?? 1; }
             JToken b = d["briefing"];

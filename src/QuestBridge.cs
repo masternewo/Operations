@@ -31,7 +31,7 @@ namespace Operations.Client
                 int status = StatusOf(quest);
                 if (finish ? status != 3 : status != 1 && status != 6)
                 {
-                    done(finish ? "The objectives are not complete yet." : status == 0 ? "This task is locked - you do not meet its requirements yet (minimum level)." : "This task cannot be accepted right now (status " + status + ").");
+                    done(finish ? "The objectives are not complete yet." : status == 0 ? "This task is locked by the game (requirements not met)." : "This task cannot be accepted right now (status " + status + ").");
                     return;
                 }
                 Task task = finish ? (Task)ctl.FinishQuest(quest, true) : ctl.AcceptQuest(quest, true);
@@ -48,6 +48,62 @@ namespace Operations.Client
                 OperationsPlugin.Log.LogWarning("Quest action failed: " + e);
                 done("Could not complete the action: " + e.Message);
             }
+        }
+
+        /// <summary>-2 = the game's quest list does not contain this task (published after login), otherwise its EQuestStatus.</summary>
+        public static int Lookup(string questId)
+        {
+            try
+            {
+                AbstractQuestControllerClass ctl = Controller();
+                if (ctl == null) return -1;
+                QuestClass q = Find(ctl, questId);
+                return q == null ? -2 : StatusOf(q);
+            }
+            catch (Exception) { return -1; }
+        }
+
+        /// <summary>
+        /// Best effort, fully guarded: ask the session for the quest templates again and feed new ones to the quest controller.
+        /// Built on reflection because the game assemblies are obfuscated; every step is logged so a failure shows what to adjust.
+        /// Returns a short description of how it ended (for the log / status line).
+        /// </summary>
+        public static string TrySync(string questId)
+        {
+            try
+            {
+                AbstractQuestControllerClass ctl = Controller();
+                if (ctl == null) return "no controller";
+                object app = Singleton<ClientApplication<ISession>>.Instance;
+                MethodInfo gs = app == null ? null : app.GetType().GetMethod("GetClientBackEndSession", Any);
+                object session = gs != null ? gs.Invoke(app, null) : null;
+                if (session == null) return "no session";
+                MethodInfo req = null;
+                foreach (MethodInfo m in session.GetType().GetMethods(Any))
+                    if (m.Name.IndexOf("QuestsTemplates", StringComparison.OrdinalIgnoreCase) >= 0 && m.GetParameters().Length == 0) { req = m; break; }
+                if (req == null) { OperationsPlugin.Log.LogInfo("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName); return "template request unavailable"; }
+                object res = req.Invoke(session, null);
+                var task = res as Task;
+                if (task != null) { if (!task.Wait(4000)) return "timeout"; PropertyInfo rp = task.GetType().GetProperty("Result"); res = rp != null ? rp.GetValue(task, null) : null; }
+                if (res == null) return "empty reply";
+                foreach (FieldInfo f in ctl.GetType().GetFields(Any))
+                {
+                    MethodInfo add = f.FieldType.GetMethod("AddTemplates", Any);
+                    if (add == null) continue;
+                    object store = f.GetValue(ctl);
+                    if (store == null) continue;
+                    object arg = res;
+                    PropertyInfo inner = res.GetType().GetProperty("Result");
+                    if (!add.GetParameters()[0].ParameterType.IsInstanceOfType(arg) && inner != null) arg = inner.GetValue(res, null);
+                    if (arg == null || !add.GetParameters()[0].ParameterType.IsInstanceOfType(arg)) { OperationsPlugin.Log.LogInfo("TrySync: template payload type " + (arg == null ? "null" : arg.GetType().FullName) + " does not fit AddTemplates"); return "payload mismatch"; }
+                    add.Invoke(store, new[] { arg });
+                    MethodInfo nq = ctl.GetType().GetMethod("NewQuests", Any);
+                    if (nq != null) nq.Invoke(ctl, new object[] { null });
+                    return Lookup(questId) != -2 ? "ok" : "task still unknown";
+                }
+                return "no template store";
+            }
+            catch (Exception e) { OperationsPlugin.Log.LogWarning("TrySync failed: " + e); return "error"; }
         }
 
         private static AbstractQuestControllerClass Controller()

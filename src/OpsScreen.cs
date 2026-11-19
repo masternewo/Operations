@@ -22,7 +22,11 @@ namespace Operations.Client
         private string _selected;
         private readonly Dictionary<string, Dossier> _opened = new Dictionary<string, Dossier>();
         private readonly Dictionary<string, Texture2D> _images = new Dictionary<string, Texture2D>();
+        private string _profile;
         private bool _busy;
+
+        private void DropImage(string id) { Texture2D t; if (_images.TryGetValue(id, out t)) { if (t != null) Destroy(t); _images.Remove(id); } }
+        private void DropAll() { foreach (Texture2D t in _images.Values) if (t != null) Destroy(t); _images.Clear(); _opened.Clear(); }
         private float _nextSquadPoll;
         private TextMeshProUGUI _countdown;
         private float _cdLocalAt; private long _cdServerNow, _cdStartAt; private bool _cdActive; private string _cdMission;
@@ -101,7 +105,25 @@ namespace Operations.Client
         public void SetInbox(Inbox inbox)
         {
             _inbox = inbox ?? new Inbox();
-            if (IsOpen) RebuildList();
+            // another profile logged in (profile switch): nothing cached for the previous one may be shown
+            if (!string.IsNullOrEmpty(_inbox.Profile) && _inbox.Profile != _profile)
+            {
+                _profile = _inbox.Profile; DropAll(); _selected = null;
+                if (IsOpen) { RebuildList(); ShowSelected(false); }
+                return;
+            }
+            // a mission edited on the server (text, equipment, image): forget the stale dossier so it is fetched again
+            bool staleSelected = false;
+            foreach (InboxItem it in _inbox.Items)
+            {
+                Dossier old;
+                if (it.Rev != null && _opened.TryGetValue(it.Id, out old) && old != null && old.Rev != it.Rev)
+                {
+                    _opened.Remove(it.Id); DropImage(it.Id);
+                    if (it.Id == _selected) staleSelected = true;
+                }
+            }
+            if (IsOpen) { RebuildList(); if (staleSelected && !_busy) Refresh(_selected, true); }
         }
 
         public void Show(string selectId, bool autoOpen)
@@ -179,7 +201,7 @@ namespace Operations.Client
             }
             InboxItem item = _inbox.Items.Find(i => i.Id == _selected);
             Dossier cached;
-            if (_opened.TryGetValue(_selected, out cached)) { BuildDossier(cached); return; }
+            if (_opened.TryGetValue(_selected, out cached)) { BuildDossier(cached); if (!cached.Gated && !_busy) Refresh(_selected, true); return; }
             if (item != null && item.Unread && !autoOpen)
             {
                 TextMeshProUGUI c = UiKit.Label(_dossierContent, "CONFIDENTIAL", 46, UiKit.Gold, FontStyles.Bold, TextAlignmentOptions.Center);
@@ -311,24 +333,41 @@ namespace Operations.Client
         {
             if (string.IsNullOrEmpty(d.QuestId)) return;
             string id = d.Id, qid = d.QuestId;
-            if (d.Status == 0 || d.Status == 1 || d.Status == 6)
+            int cs = QuestBridge.Lookup(qid);          // -2: the game does not know this task yet
+            int status = cs >= 0 ? cs : d.Status;
+            if (cs == -2 && (d.Status <= 1))
             {
-                Button b = UiKit.Btn(p, d.Status == 0 ? "LOCKED" : "ACCEPT TASK", () => Act(id, qid, false), UiKit.Shade(UiKit.Gold, 0.55f), 20);
-                b.interactable = d.Status != 0; UiKit.Size(b, 52, 52, 300);
-                UiKit.Label(p, d.Status == 0 ? "You do not meet the requirements for this task yet (minimum level)." : d.Loadout.Count > 0 ? "Accepting starts the objectives. The issued equipment is delivered to your messages from the task giver." : "Accepting starts the objectives.", 13, UiKit.Muted);
+                Button sb = UiKit.Btn(p, "SYNC TASK", () => SyncNow(id, qid), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                UiKit.Size(sb, 52, 52, 300);
+                UiKit.Label(p, "This task was published while you were in the menu, so your game has not loaded it yet. Press SYNC TASK to try loading it now; if that fails it appears after your next raid or relog.", 13, UiKit.Muted);
+                return;
             }
-            else if (d.Status == 2)
+            if (status == 0 || status == 1 || status == 6)
+            {
+                Button b = UiKit.Btn(p, status == 0 ? "LOCKED" : "ACCEPT TASK", () => Act(id, qid, false), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                b.interactable = status != 0; UiKit.Size(b, 52, 52, 300);
+                UiKit.Label(p, status == 0 ? "The game reports this task as locked (its requirements are not met yet)." : d.Loadout.Count > 0 ? "Accepting starts the objectives. The issued equipment is delivered to your messages from the task giver." : "Accepting starts the objectives.", 13, UiKit.Muted);
+            }
+            else if (status == 2)
             {
                 UiKit.Label(p, "TASK ACTIVE  -  complete the objectives in raid, then return here to claim the reward.", 15, UiKit.Green, FontStyles.Bold);
             }
-            else if (d.Status == 3)
+            else if (status == 3)
             {
                 Button b = UiKit.Btn(p, "CLAIM REWARD", () => Act(id, qid, true), UiKit.Shade(UiKit.Green, 0.5f), 20);
                 UiKit.Size(b, 52, 52, 300);
                 UiKit.Label(p, "Objectives complete. Claiming pays the reward (money and items arrive in your messages) and adds your rank points.", 13, UiKit.Muted);
             }
-            else if (d.Status == 4) UiKit.Label(p, "TASK COMPLETED  -  reward claimed.", 15, UiKit.Green, FontStyles.Bold);
-            else if (d.Status == 5 || d.Status == 7) UiKit.Label(p, "TASK FAILED.", 15, UiKit.Red, FontStyles.Bold);
+            else if (status == 4) UiKit.Label(p, "TASK COMPLETED  -  reward claimed.", 15, UiKit.Green, FontStyles.Bold);
+            else if (status == 5 || status == 7) UiKit.Label(p, "TASK FAILED.", 15, UiKit.Red, FontStyles.Bold);
+        }
+
+        private void SyncNow(string id, string qid)
+        {
+            SetStatus("Syncing...", false);
+            string how = QuestBridge.TrySync(qid);
+            if (QuestBridge.Lookup(qid) != -2) { SetStatus("Task loaded.", false); Clear(_dossierContent); if (_opened.TryGetValue(id, out Dossier d)) BuildDossier(d); }
+            else SetStatus("Could not load it live (" + how + "). It appears after your next raid or relog.", true);
         }
 
         private void Act(string id, string questId, bool finish)
