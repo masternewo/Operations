@@ -19,6 +19,7 @@ namespace Operations.Client
     internal sealed class Inbox
     {
         public bool Enabled;
+        public string Theme = "classic";
         public int Unread, Critical;
         public List<InboxItem> Items = new List<InboxItem>();
     }
@@ -33,7 +34,7 @@ namespace Operations.Client
         public List<SquadMember> Members = new List<SquadMember>();
     }
 
-    internal sealed class MediaRef { public int Index; public string Type, File; }
+    internal sealed class MediaRef { public int Index; public string Type, File, Sha; public long Size; }
     internal sealed class ItemRef { public string Tpl; public int Count; }
 
     internal sealed class Dossier
@@ -71,6 +72,7 @@ namespace Operations.Client
             var box = new Inbox();
             if (d == null || d.Type != JTokenType.Object) return box;
             box.Enabled = d.Value<bool?>("enabled") == true;
+            box.Theme = d.Value<string>("theme") == "modern" ? "modern" : "classic";
             box.Unread = d.Value<int?>("unread") ?? 0;
             box.Critical = d.Value<int?>("critical") ?? 0;
             if (d["items"] is JArray items)
@@ -133,7 +135,7 @@ namespace Operations.Client
             if (b != null && b.Type == JTokenType.Object)
             {
                 o.Sender = b.Value<string>("sender"); o.Subject = b.Value<string>("subject"); o.Body = b.Value<string>("body");
-                if (b["media"] is JArray ma) foreach (JToken m in ma) o.Media.Add(new MediaRef { Index = m.Value<int?>("index") ?? 0, Type = m.Value<string>("type"), File = m.Value<string>("file") });
+                if (b["media"] is JArray ma) foreach (JToken m in ma) o.Media.Add(new MediaRef { Index = m.Value<int?>("index") ?? 0, Type = m.Value<string>("type"), File = m.Value<string>("file"), Sha = m.Value<string>("sha"), Size = m.Value<long?>("size") ?? 0 });
             }
             if (d["objectives"] is JArray ob) foreach (JToken t in ob) o.Objectives.Add((string)t);
             if (d["loadout"] is JArray lo) foreach (JToken t in lo) o.Loadout.Add(new ItemRef { Tpl = t.Value<string>("tpl"), Count = t.Value<int?>("count") ?? 1 });

@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Operations.Client
 {
-    [BepInPlugin("com.operations.client", "Operations Client", "0.3.0")]
+    [BepInPlugin("com.operations.client", "Operations Client", "0.4.0")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     public class OperationsPlugin : BaseUnityPlugin
     {
@@ -42,6 +42,15 @@ namespace Operations.Client
             if (_alert == null) _alert = AlertIcon.Create(transform, id => { if (_screen != null) _screen.Show(id, true); });
         }
 
+        /// <summary>The look changed on the server: build the screens again with the new palette (the old ones are discarded).</summary>
+        private void RebuildUi()
+        {
+            if (_screen != null) { _screen.Hide(); Destroy(_screen.gameObject); _screen = null; }
+            if (_alert != null) { _alert.Clear(); Destroy(_alert.gameObject); _alert = null; }
+            EnsureUi();
+            _screen.SetInbox(_inbox);
+        }
+
         private void OpenScreen()
         {
             EnsureUi();
@@ -63,8 +72,6 @@ namespace Operations.Client
                 return;
             }
 
-            if (_screen.IsOpen && Input.GetKeyDown(KeyCode.Escape)) _screen.Hide();
-
             if (!_tab.Bound && Time.unscaledTime >= _nextBind) { _nextBind = Time.unscaledTime + 1f; _tab.TryBind(); }
 
             if ((_refreshNow || Time.unscaledTime >= _nextPoll) && !_polling)
@@ -81,6 +88,7 @@ namespace Operations.Client
         private void ApplyInbox(Inbox inbox)
         {
             _inbox = inbox ?? new Inbox();
+            if (UiKit.SetTheme(_inbox.Theme)) RebuildUi(); // the admin switched the interface style
             _screen.SetInbox(_inbox);
             _tab.SetCount(_inbox.Enabled ? _inbox.Unread : 0);
 

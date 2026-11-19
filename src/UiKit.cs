@@ -9,17 +9,64 @@ namespace Operations.Client
     /// <summary>Small uGUI toolkit: everything is built from code so there is no asset bundle to ship.</summary>
     internal static class UiKit
     {
-        // Palette sampled from the Tarkov menu look (dark steel panels, muted gold accents, red for alerts).
-        public static readonly Color Dim = new Color(0f, 0f, 0f, 0.78f);
-        public static readonly Color Panel = new Color(0.075f, 0.082f, 0.09f, 0.97f);
-        public static readonly Color Panel2 = new Color(0.115f, 0.125f, 0.135f, 1f);
-        public static readonly Color Line = new Color(0.27f, 0.29f, 0.3f, 1f);
-        public static readonly Color Gold = new Color(0.80f, 0.71f, 0.45f, 1f);
-        public static readonly Color Text = new Color(0.84f, 0.86f, 0.87f, 1f);
-        public static readonly Color Muted = new Color(0.55f, 0.58f, 0.6f, 1f);
-        public static readonly Color Red = new Color(0.80f, 0.22f, 0.18f, 1f);
-        public static readonly Color Green = new Color(0.58f, 0.82f, 0.18f, 1f);
-        public static readonly Color Amber = new Color(0.95f, 0.68f, 0.12f, 1f);
+        // Two looks, switched by the admin ("Interface style" in the panel settings):
+        //   classic = dark steel panels with muted gold (what the game menu already looks like)
+        //   modern  = graphite plates with cut corners, moss green accents and brass highlights
+        public static Color Dim = new Color(0f, 0f, 0f, 0.78f);
+        public static Color Panel = new Color(0.075f, 0.082f, 0.09f, 0.97f);
+        public static Color Panel2 = new Color(0.115f, 0.125f, 0.135f, 1f);
+        public static Color Line = new Color(0.27f, 0.29f, 0.3f, 1f);
+        public static Color Gold = new Color(0.80f, 0.71f, 0.45f, 1f);
+        public static Color Text = new Color(0.84f, 0.86f, 0.87f, 1f);
+        public static Color Muted = new Color(0.55f, 0.58f, 0.6f, 1f);
+        public static Color Red = new Color(0.80f, 0.22f, 0.18f, 1f);
+        public static Color Green = new Color(0.58f, 0.82f, 0.18f, 1f);
+        public static Color Amber = new Color(0.95f, 0.68f, 0.12f, 1f);
+        public static readonly Color Frame = new Color(0.96f, 0.78f, 0.20f, 1f); // the yellow border of the close window
+        public static bool Modern;
+
+        /// <summary>Switches the palette. Returns true when the look changed (the screens must then be rebuilt).</summary>
+        public static bool SetTheme(string theme)
+        {
+            bool modern = theme == "modern";
+            if (modern == Modern) return false;
+            Modern = modern;
+            if (modern)
+            {
+                Dim = new Color(0.02f, 0.025f, 0.02f, 0.82f);
+                Panel = new Color(0.07f, 0.075f, 0.08f, 0.98f);
+                Panel2 = new Color(0.105f, 0.115f, 0.12f, 1f);
+                Line = new Color(0.21f, 0.23f, 0.24f, 1f);
+                Gold = new Color(0.64f, 0.71f, 0.40f, 1f);      // moss
+                Text = new Color(0.91f, 0.90f, 0.85f, 1f);      // bone
+                Muted = new Color(0.61f, 0.60f, 0.53f, 1f);
+                Red = new Color(0.90f, 0.41f, 0.31f, 1f);
+                Green = new Color(0.58f, 0.72f, 0.43f, 1f);
+                Amber = new Color(0.85f, 0.68f, 0.29f, 1f);     // brass
+            }
+            else
+            {
+                Dim = new Color(0f, 0f, 0f, 0.78f);
+                Panel = new Color(0.075f, 0.082f, 0.09f, 0.97f);
+                Panel2 = new Color(0.115f, 0.125f, 0.135f, 1f);
+                Line = new Color(0.27f, 0.29f, 0.3f, 1f);
+                Gold = new Color(0.80f, 0.71f, 0.45f, 1f);
+                Text = new Color(0.84f, 0.86f, 0.87f, 1f);
+                Muted = new Color(0.55f, 0.58f, 0.6f, 1f);
+                Red = new Color(0.80f, 0.22f, 0.18f, 1f);
+                Green = new Color(0.58f, 0.82f, 0.18f, 1f);
+                Amber = new Color(0.95f, 0.68f, 0.12f, 1f);
+            }
+            return true;
+        }
+
+        /// <summary>Modern look only: cut the top-left and bottom-right corner of a plain Image.</summary>
+        public static void Cut(Image img, float size)
+        {
+            if (!Modern || img == null) return;
+            var c = img.gameObject.GetComponent<Chamfer>() ?? img.gameObject.AddComponent<Chamfer>();
+            c.Size = size;
+        }
 
         public static Color Shade(Color c, float f) { return new Color(c.r * f, c.g * f, c.b * f, 1f); }
 
@@ -83,6 +130,7 @@ namespace Operations.Client
         public static Button Btn(Transform parent, string text, UnityAction onClick, Color bg, int size = 16)
         {
             Image img = Box(parent, "Button", bg);
+            Cut(img, 8f);
             var b = img.gameObject.AddComponent<Button>();
             b.targetGraphic = img;
             ColorBlock cb = b.colors; cb.normalColor = Color.white; cb.highlightedColor = new Color(1.25f, 1.25f, 1.25f, 1f); cb.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f); cb.disabledColor = new Color(1f, 1f, 1f, 0.35f);

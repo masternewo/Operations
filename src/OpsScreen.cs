@@ -51,8 +51,9 @@ namespace Operations.Client
 
             Image win = UiKit.Box(dim.transform, "Window", UiKit.Panel);
             UiKit.Anchor(win.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-720, -400), new Vector2(720, 400));
+            UiKit.Cut(win, 26f);
             Image gold = UiKit.Box(win.transform, "TopLine", UiKit.Gold); gold.raycastTarget = false;
-            UiKit.Anchor(gold.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0, -3), new Vector2(0, 0));
+            UiKit.Anchor(gold.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(UiKit.Modern ? 26 : 0, -3), new Vector2(0, 0));
 
             // header
             RectTransform header = UiKit.Rect("Header", win.transform);
@@ -61,13 +62,22 @@ namespace Operations.Client
             UiKit.Anchor(title.rectTransform, new Vector2(0, 0), new Vector2(0.6f, 1), new Vector2(0, 14), new Vector2(0, 0));
             _subtitle = UiKit.Label(header, "SECURE CHANNEL  //  AUTHORIZED PERSONNEL ONLY", 13, UiKit.Muted);
             UiKit.Anchor(_subtitle.rectTransform, new Vector2(0, 0), new Vector2(0.7f, 0), new Vector2(2, 0), new Vector2(0, 18));
-            Button close = UiKit.Btn(header, "CLOSE  [ESC]", Hide, UiKit.Panel2, 15);
-            UiKit.Anchor((RectTransform)close.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-170, -22), new Vector2(0, 22));
+            // Small window with a yellow border at the top right: the one way to close the screen (no keyboard shortcut to collide with the game menu).
+            Image frame = UiKit.Box(header, "CloseFrame", UiKit.Frame); frame.raycastTarget = false;
+            UiKit.Anchor(frame.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-132, -22), new Vector2(0, 22));
+            Image inner = UiKit.Box(frame.transform, "CloseInner", UiKit.Panel2);
+            UiKit.Stretch(inner.rectTransform, 2, 2, 2, 2);
+            var closeBtn = inner.gameObject.AddComponent<Button>(); closeBtn.targetGraphic = inner;
+            ColorBlock ccb = closeBtn.colors; ccb.highlightedColor = new Color(1.3f, 1.3f, 1.3f, 1f); ccb.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f); closeBtn.colors = ccb;
+            closeBtn.onClick.AddListener(Hide);
+            TextMeshProUGUI closeText = UiKit.Label(inner.transform, "X   CLOSE", 15, UiKit.Frame, FontStyles.Bold, TextAlignmentOptions.Center);
+            closeText.enableWordWrapping = false; closeText.characterSpacing = 2f;
+            UiKit.Stretch(closeText.rectTransform);
             Image rule = UiKit.Box(win.transform, "Rule", UiKit.Line); rule.raycastTarget = false;
             UiKit.Anchor(rule.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(28, -86), new Vector2(-28, -85));
 
             // left list
-            Image left = UiKit.Box(win.transform, "ListPane", UiKit.Panel2);
+            Image left = UiKit.Box(win.transform, "ListPane", UiKit.Panel2); UiKit.Cut(left, 14f);
             UiKit.Anchor(left.rectTransform, new Vector2(0, 0), new Vector2(0, 1), new Vector2(28, 52), new Vector2(408, -100));
             TextMeshProUGUI lh = UiKit.Label(left.transform, "ORDERS", 14, UiKit.Muted, FontStyles.Bold);
             UiKit.Anchor(lh.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(14, -30), new Vector2(-14, -8));
@@ -75,7 +85,7 @@ namespace Operations.Client
             UiKit.Anchor((RectTransform)ls.transform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(0, 0), new Vector2(0, -34));
 
             // right dossier
-            Image right = UiKit.Box(win.transform, "DossierPane", UiKit.Panel2);
+            Image right = UiKit.Box(win.transform, "DossierPane", UiKit.Panel2); UiKit.Cut(right, 14f);
             UiKit.Anchor(right.rectTransform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(424, 52), new Vector2(-28, -100));
             _dossierContent = UiKit.Scroll(right.transform, out _dossierScroll, 10f, 22);
             UiKit.Stretch((RectTransform)_dossierScroll.transform);
@@ -109,8 +119,6 @@ namespace Operations.Client
         private void Update()
         {
             if (!IsOpen) return;
-            if (Input.GetKeyDown(KeyCode.Escape)) { Hide(); return; }
-
             // squad briefing: poll while the file is gated / waiting, and finish the countdown on the server's clock
             if (_selected != null && _opened.TryGetValue(_selected, out Dossier d) && d.Squad != null)
             {
@@ -213,12 +221,22 @@ namespace Operations.Client
             }
         }
 
+        /// <summary>Worker thread: disk cache first (by the server's hash), download only when the file is new or was replaced.</summary>
+        private static byte[] FetchImage(string missionId, MediaRef m)
+        {
+            byte[] bytes = ImageCache.TryGet(m.Sha);
+            if (bytes != null) return bytes;
+            bytes = Api.Media(missionId, m.Index);
+            if (bytes != null && bytes.Length > 0) ImageCache.Put(bytes);
+            return bytes;
+        }
+
         private void LoadImage(Dossier d)
         {
             MediaRef m = d.Media.Find(x => x.Type == "image");
             if (m == null) return;
             string id = d.Id;
-            Dispatcher.Run(() => Api.Media(id, m.Index), bytes =>
+            Dispatcher.Run(() => FetchImage(id, m), bytes =>
             {
                 if (bytes == null || bytes.Length == 0) return;
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
