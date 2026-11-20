@@ -23,10 +23,11 @@ namespace Operations.Client
         private readonly Dictionary<string, Dossier> _opened = new Dictionary<string, Dossier>();
         private readonly Dictionary<string, Texture2D> _images = new Dictionary<string, Texture2D>();
         private string _profile;
+        private readonly HashSet<string> _loading = new HashSet<string>(); // images being fetched (no duplicate downloads / leaked textures)
         private bool _busy;
 
         private void DropImage(string id) { Texture2D t; if (_images.TryGetValue(id, out t)) { if (t != null) Destroy(t); _images.Remove(id); } }
-        private void DropAll() { foreach (Texture2D t in _images.Values) if (t != null) Destroy(t); _images.Clear(); _opened.Clear(); }
+        private void DropAll() { _loading.Clear(); foreach (Texture2D t in _images.Values) if (t != null) Destroy(t); _images.Clear(); _opened.Clear(); }
         private float _nextSquadPoll;
         private TextMeshProUGUI _countdown;
         private float _cdLocalAt; private long _cdServerNow, _cdStartAt; private bool _cdActive; private string _cdMission;
@@ -225,10 +226,11 @@ namespace Operations.Client
             {
                 _busy = false;
                 if (d == null) { SetStatus("The server returned no data.", true); return; }
+                Dossier prev; if (_opened.TryGetValue(id, out prev) && prev != null && prev.Rev != d.Rev) DropImage(id); // content or attachment replaced on the server
                 _opened[id] = d;
                 MarkRead(id);
                 if (id == _selected) { Clear(_dossierContent); BuildDossier(d); }
-                if (d.Media.Count > 0 && !d.Gated && !_images.ContainsKey(id)) LoadImage(d);
+                if (d.Media.Count > 0 && !d.Gated && !_images.ContainsKey(id) && !_loading.Contains(id)) LoadImage(d);
             }, err => { _busy = false; SetStatus("Cannot open: " + err, true); if (id == _selected && !silent) { Clear(_dossierContent); Note("Cannot open this file: " + err); } });
         }
 
@@ -257,15 +259,19 @@ namespace Operations.Client
         {
             MediaRef m = d.Media.Find(x => x.Type == "image");
             if (m == null) return;
-            string id = d.Id;
+            string id = d.Id; string rev = d.Rev;
+            _loading.Add(id);
             Dispatcher.Run(() => FetchImage(id, m), bytes =>
             {
+                _loading.Remove(id);
                 if (bytes == null || bytes.Length == 0) return;
+                Dossier now; if (!_opened.TryGetValue(id, out now) || now == null || now.Rev != rev) return; // replaced / profile switched meanwhile
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 if (!tex.LoadImage(bytes)) { Destroy(tex); return; }
+                DropImage(id);
                 _images[id] = tex;
                 if (id == _selected && _opened.TryGetValue(id, out Dossier cur)) { Clear(_dossierContent); BuildDossier(cur); }
-            }, err => SetStatus("Attachment unavailable: " + err, true));
+            }, err => { _loading.Remove(id); SetStatus("Attachment unavailable: " + err, true); });
         }
 
         private void BuildDossier(Dossier d)
