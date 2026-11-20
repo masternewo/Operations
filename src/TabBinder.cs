@@ -33,6 +33,9 @@ namespace Operations.Client
             }
         }
 
+        /// <summary>True while the game's bottom bar (and with it the main menu) is on screen. Not bound yet = unknown, treated as visible.</summary>
+        public bool MenuVisible { get { return _tab == null || _tab.activeInHierarchy; } }
+
         public bool TryBind()
         {
             if (Bound) return true;

@@ -81,7 +81,14 @@ namespace Operations.Client
                 MethodInfo req = null;
                 foreach (MethodInfo m in session.GetType().GetMethods(Any))
                     if (m.Name.IndexOf("QuestsTemplates", StringComparison.OrdinalIgnoreCase) >= 0 && m.GetParameters().Length == 0) { req = m; break; }
-                if (req == null) { OperationsPlugin.Log.LogInfo("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName); done("template request unavailable"); return; }
+                if (req == null)
+                {
+                    var names = new System.Text.StringBuilder();
+                    foreach (MethodInfo m in session.GetType().GetMethods(Any))
+                        if (m.Name.IndexOf("Quest", StringComparison.OrdinalIgnoreCase) >= 0) names.Append(m.Name).Append('(').Append(m.GetParameters().Length).Append(") ");
+                    OperationsPlugin.Log.LogWarning("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName + ". Quest methods: " + names);
+                    done("template request unavailable"); return;
+                }
                 object res = req.Invoke(session, null);      // only starts the request; never blocks the game thread
                 var task = res as Task;
                 if (task == null) { Apply(ctl, res, questId, done); return; }

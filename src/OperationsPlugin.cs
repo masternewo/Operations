@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Operations.Client
 {
-    [BepInPlugin("com.operations.client", "Operations Client", "0.5.0")]
+    [BepInPlugin("com.operations.client", "Operations Client", "0.6.0")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     public class OperationsPlugin : BaseUnityPlugin
     {
@@ -65,6 +65,9 @@ namespace Operations.Client
             EnsureUi();
 
             bool raid = InRaid();
+            // loading screens and the other menus hide the game's bottom bar: the alert tag must not float over them and our screen must not stay open
+            bool menu = !raid && _tab.MenuVisible;
+            if (!menu && !raid) { _alert.Clear(); if (_screen.IsOpen) _screen.Hide(); }
             if (raid)
             {
                 if (_screen.IsOpen) _screen.Hide();
@@ -104,7 +107,7 @@ namespace Operations.Client
                     if (i.Squad != null && i.Squad.AllOnline && i.Squad.State == "waiting") { pick = i; title = "SQUAD ASSEMBLED"; sub = "BRIEFING READY  -  CLICK TO OPEN"; break; }
                 }
             }
-            if (pick != null && _inbox.Enabled && !_screen.IsOpen) _alert.Set(pick.Id, critical, title, sub); else _alert.Clear();
+            if (pick != null && _inbox.Enabled && !_screen.IsOpen && _tab.MenuVisible && !InRaid()) _alert.Set(pick.Id, critical, title, sub); else _alert.Clear();
         }
     }
 }

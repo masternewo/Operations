@@ -141,6 +141,23 @@ namespace Operations.Client
             return b;
         }
 
+        /// <summary>A real-looking button: gold frame, bold caption. Used for every action so it cannot be mistaken for plain text.</summary>
+        public static Button ActionBtn(Transform parent, string text, UnityAction onClick, Color bg, int size = 18)
+        {
+            Button b = Btn(parent, text, onClick, bg, size);
+            Transform t = b.transform;
+            for (int i = 0; i < 4; i++)
+            {
+                Image e = Box(t, "Edge", Frame); e.raycastTarget = false;
+                if (i == 0) Anchor(e.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0, -2), new Vector2(0, 0));
+                else if (i == 1) Anchor(e.rectTransform, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 0), new Vector2(0, 2));
+                else if (i == 2) Anchor(e.rectTransform, new Vector2(0, 0), new Vector2(0, 1), new Vector2(0, 0), new Vector2(2, 0));
+                else Anchor(e.rectTransform, new Vector2(1, 0), new Vector2(1, 1), new Vector2(-2, 0), new Vector2(0, 0));
+            }
+            TextMeshProUGUI lab = t.GetComponentInChildren<TextMeshProUGUI>(); if (lab != null) { lab.fontStyle = FontStyles.Bold; lab.characterSpacing = 2f; lab.color = Text; }
+            return b;
+        }
+
         /// <summary>A vertical scroll area; returns the content container (children are stacked automatically).</summary>
         public static RectTransform Scroll(Transform parent, out ScrollRect scroll, float spacing = 8f, int padding = 12)
         {

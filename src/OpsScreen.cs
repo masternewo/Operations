@@ -221,7 +221,7 @@ namespace Operations.Client
                 TextMeshProUGUI s = UiKit.Label(_dossierContent, item.Critical ? "PRIORITY ORDER  -  EYES ONLY" : "AUTHORIZED PERSONNEL ONLY", 18, item.Critical ? UiKit.Red : UiKit.Muted, FontStyles.Normal, TextAlignmentOptions.Center);
                 UiKit.Size(s, 34, 34);
                 string id = _selected;
-                Button open = UiKit.Btn(_dossierContent, "OPEN FILE", () => Refresh(id), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                Button open = UiKit.ActionBtn(_dossierContent, "OPEN FILE", () => Refresh(id), UiKit.Shade(UiKit.Gold, 0.55f), 20);
                 UiKit.Size(open, 56, 56, 320);
                 return;
             }
@@ -327,11 +327,17 @@ namespace Operations.Client
                 UiKit.Label(p, sb.ToString().TrimEnd(), 16, UiKit.Text);
             }
 
-            UiKit.Divider(p);
-            UiKit.Section(p, "BRIEFING");
-            UiKit.Label(p, "FROM:  " + (d.Sender ?? ""), 15, UiKit.Muted);
-            if (!string.IsNullOrEmpty(d.Subject)) UiKit.Label(p, "SUBJECT:  " + d.Subject, 15, UiKit.Muted);
-            TextMeshProUGUI body = UiKit.Label(p, d.Body ?? "", 18, UiKit.Text); body.lineSpacing = 8;
+            // heal: an attachment that is not on screen yet (cache miss, interrupted download) is requested again
+            if (d.Media.Count > 0 && !_images.ContainsKey(d.Id) && !_loading.Contains(d.Id)) LoadImage(d);
+            bool hasText = !string.IsNullOrEmpty(d.Sender) || !string.IsNullOrEmpty(d.Subject) || !string.IsNullOrEmpty(d.Body);
+            if (hasText || d.Media.Count > 0)
+            {
+                UiKit.Divider(p);
+                UiKit.Section(p, "BRIEFING");
+                if (!string.IsNullOrEmpty(d.Sender)) UiKit.Label(p, "FROM:  " + d.Sender, 15, UiKit.Muted);
+                if (!string.IsNullOrEmpty(d.Subject)) UiKit.Label(p, "SUBJECT:  " + d.Subject, 15, UiKit.Muted);
+                if (!string.IsNullOrEmpty(d.Body)) { TextMeshProUGUI body = UiKit.Label(p, d.Body, 18, UiKit.Text); body.lineSpacing = 8; }
+            }
 
             Texture2D tex;
             if (_images.TryGetValue(d.Id, out tex))
@@ -354,14 +360,14 @@ namespace Operations.Client
             int status = cs >= 0 ? cs : d.Status;
             if (cs == -2 && (d.Status <= 1))
             {
-                Button sb = UiKit.Btn(p, "SYNC TASK", () => SyncNow(id, qid), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                Button sb = UiKit.ActionBtn(p, "SYNC TASK", () => SyncNow(id, qid), UiKit.Shade(UiKit.Gold, 0.55f), 20);
                 UiKit.Size(sb, 52, 52, 300);
                 UiKit.Label(p, "This task was published while you were in the menu, so your game has not loaded it yet. Press SYNC TASK to try loading it now; if that fails it appears after your next raid or relog.", 13, UiKit.Muted);
                 return;
             }
             if (status == 0 || status == 1 || status == 6)
             {
-                Button b = UiKit.Btn(p, status == 0 ? "LOCKED" : "ACCEPT TASK", () => Act(id, qid, false), UiKit.Shade(UiKit.Gold, 0.55f), 20);
+                Button b = UiKit.ActionBtn(p, status == 0 ? "LOCKED" : "ACCEPT TASK", () => Act(id, qid, false), UiKit.Shade(UiKit.Gold, 0.55f), 20);
                 b.interactable = status != 0; UiKit.Size(b, 52, 52, 300);
                 UiKit.Label(p, status == 0 ? "The game reports this task as locked (its requirements are not met yet)." : d.Loadout.Count > 0 ? "Accepting starts the objectives. The issued equipment is delivered to your messages from the task giver." : "Accepting starts the objectives.", 13, UiKit.Muted);
             }
@@ -371,7 +377,7 @@ namespace Operations.Client
             }
             else if (status == 3)
             {
-                Button b = UiKit.Btn(p, "CLAIM REWARD", () => Act(id, qid, true), UiKit.Shade(UiKit.Green, 0.5f), 20);
+                Button b = UiKit.ActionBtn(p, "CLAIM REWARD", () => Act(id, qid, true), UiKit.Shade(UiKit.Green, 0.5f), 20);
                 UiKit.Size(b, 52, 52, 300);
                 UiKit.Label(p, "Objectives complete. Claiming pays the reward (money and items arrive in your messages) and adds your rank points.", 13, UiKit.Muted);
             }
@@ -429,7 +435,7 @@ namespace Operations.Client
             {
                 UiKit.Label(p, s.AllOnline ? "All squad members are online. Brief them over voice chat, then start the shared briefing." : "Waiting for squad members to come online. You may start the briefing at any time.", 15, s.AllOnline ? UiKit.Green : UiKit.Muted);
                 string id = d.Id;
-                Button go = UiKit.Btn(p, "START BRIEFING FOR THE SQUAD", () => StartBriefing(id), UiKit.Shade(UiKit.Gold, 0.55f), 18);
+                Button go = UiKit.ActionBtn(p, "START BRIEFING FOR THE SQUAD", () => StartBriefing(id), UiKit.Shade(UiKit.Gold, 0.55f), 18);
                 UiKit.Size(go, 54, 54);
             }
             else
