@@ -22,6 +22,7 @@ namespace Operations.Client
         public string Profile, Theme = "classic";
         public int Unread, Critical;
         public List<InboxItem> Items = new List<InboxItem>();
+        public HashSet<string> Keep;   // hashes still needed by the player's missions (null = server did not say)
     }
 
     internal sealed class SquadMember { public string Name; public bool Online, Commander, You; }
@@ -29,6 +30,7 @@ namespace Operations.Client
     internal sealed class SquadView
     {
         public string Id, Name, Commander, State = "waiting", Gate, By;
+        public MediaRef GateAudio;
         public bool IsCommander, AllOnline;
         public long StartAt, ServerNow;
         public List<SquadMember> Members = new List<SquadMember>();
@@ -73,6 +75,7 @@ namespace Operations.Client
             if (d == null || d.Type != JTokenType.Object) return box;
             box.Enabled = d.Value<bool?>("enabled") == true;
             box.Profile = d.Value<string>("profile");
+            if (d["keep"] is JArray kp) { box.Keep = new HashSet<string>(); foreach (JToken k in kp) box.Keep.Add((string)k); }
             box.Theme = d.Value<string>("theme") == "modern" ? "modern" : "classic";
             box.Unread = d.Value<int?>("unread") ?? 0;
             box.Critical = d.Value<int?>("critical") ?? 0;
@@ -99,11 +102,21 @@ namespace Operations.Client
         public static SquadView StartBriefing(string id) { return ParseSquad(Post("squad/start-briefing", new JObject { ["id"] = id })); }
 
         /// <summary>Image attachment bytes (PNG/JPG).</summary>
-        public static byte[] Media(string id, int index)
+        public static byte[] MediaFile(string id, object key, long size, string sha)
         {
-            JToken d = Post("media", new JObject { ["id"] = id, ["index"] = index });
-            string b64 = d == null ? null : d.Value<string>("base64");
-            return string.IsNullOrEmpty(b64) ? null : Convert.FromBase64String(b64);
+            var ms = new System.IO.MemoryStream(); long off = 0;
+            while (size <= 0 || off < size)
+            {
+                JToken d = Post("media", new JObject { ["id"] = id, ["index"] = JToken.FromObject(key), ["offset"] = off });
+                string b64 = d == null ? null : d.Value<string>("base64");
+                if (string.IsNullOrEmpty(b64)) throw new Exception("empty reply");
+                if (size <= 0) size = d.Value<long?>("size") ?? 0;
+                byte[] part = Convert.FromBase64String(b64); ms.Write(part, 0, part.Length); off += part.Length;
+                if (ms.Length > 16L * 1024 * 1024) throw new Exception("file too large");
+            }
+            byte[] all = ms.ToArray();
+            if (ImageCache.IsHash(sha) && ImageCache.HashOf(all) != sha) throw new Exception("checksum mismatch");
+            return all;
         }
 
         private static SquadView ParseSquad(JToken s)
@@ -114,6 +127,7 @@ namespace Operations.Client
                 Id = s.Value<string>("id"), Name = s.Value<string>("name"), Commander = s.Value<string>("commander"), Gate = s.Value<string>("gate"),
                 IsCommander = s.Value<bool?>("isCommander") == true, AllOnline = s.Value<bool?>("allOnline") == true
             };
+            JToken ga = s["gateAudio"]; if (ga != null && ga.Type == JTokenType.Object) v.GateAudio = new MediaRef { Index = -1, Type = ga.Value<string>("kind") ?? "audio", Sha = ga.Value<string>("sha"), Size = ga.Value<long?>("size") ?? 0, File = "gate." + (ga.Value<string>("ext") ?? "mp3") };
             JToken b = s["briefing"];
             if (b != null) { v.State = b.Value<string>("state") ?? "waiting"; v.StartAt = b.Value<long?>("startAt") ?? 0; v.ServerNow = b.Value<long?>("serverNow") ?? 0; v.By = b.Value<string>("by"); }
             if (s["members"] is JArray ms)

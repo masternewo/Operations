@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -120,7 +121,7 @@ namespace Operations.Client
             // another profile logged in (profile switch): nothing cached for the previous one may be shown
             if (!string.IsNullOrEmpty(_inbox.Profile) && _inbox.Profile != _profile)
             {
-                _profile = _inbox.Profile; DropAll(); _selected = null;
+                _profile = _inbox.Profile; DropAll(); _selected = null; if (_player != null) _player.StopAll();
                 if (IsOpen) { RebuildList(); ShowSelected(false); }
                 return;
             }
@@ -148,7 +149,42 @@ namespace Operations.Client
             ShowSelected(autoOpen);
         }
 
-        public void Hide() { if (_canvas != null) _canvas.enabled = false; _cdActive = false; }
+        public void Hide() { if (_canvas != null) _canvas.enabled = false; _cdActive = false; if (_player != null) _player.StopAll(); }
+
+        // ---- voice / video -------------------------------------------------------------------------------------------------
+        private MediaPlayer _player;
+        private MediaPlayer Player { get { if (_player == null) { _player = gameObject.AddComponent<MediaPlayer>(); _player.OnMessage = m => SetStatus(m, true); } return _player; } }
+        private static string ExtOf(MediaRef m) { string e = Path.GetExtension(m.File ?? ""); return string.IsNullOrEmpty(e) ? "bin" : e.TrimStart('.').ToLowerInvariant(); }
+        private static string Mb(long n) { return n >= 1048576 ? (n / 1048576f).ToString("0.0") + " MB" : Mathf.Max(1, (int)(n / 1024)) + " KB"; }
+        private void RefreshView() { Dossier cur; if (_selected != null && _opened.TryGetValue(_selected, out cur) && cur != null) { Clear(_dossierContent); BuildDossier(cur); } }
+
+        /// <summary>Plays (or stops) a voice message / video. The file is downloaded once in chunks, verified by hash and kept in the cache.</summary>
+        private void PlayMedia(string missionId, MediaRef m)
+        {
+            string key = missionId + ":" + (m.Index < 0 ? "gate" : m.Index.ToString());
+            if (_player != null && (_player.IsAudioPlaying(key) || _player.IsVideoPlaying(key))) { _player.StopAll(); RefreshView(); return; }
+            if (_busy) return;
+            string ext = ExtOf(m); bool video = m.Type == "video";
+            Action<string> start = p => { if (video) Player.PlayVideo(key, p); else Player.PlayAudio(key, p); RefreshView(); };
+            string path = ImageCache.PathFor(m.Sha, m.Size, ext);
+            if (path != null) { start(path); return; }
+            _busy = true; SetStatus((video ? "Downloading video " : "Downloading voice message ") + Mb(m.Size) + " ...", false);
+            Dispatcher.Run(() =>
+            {
+                byte[] b = Api.MediaFile(missionId, m.Index < 0 ? (object)"gate" : m.Index, m.Size, m.Sha);
+                ImageCache.Put(b, ext);
+                return ImageCache.PathFor(m.Sha, m.Size, ext);
+            }, p => { _busy = false; SetStatus("", false); if (p == null) SetStatus("The file could not be stored in the cache folder.", true); else start(p); },
+               err => { _busy = false; SetStatus("Download failed: " + err, true); });
+        }
+
+        /// <summary>Server-driven clean-up of the local media cache (files of finished / removed missions).</summary>
+        public void PruneCache(HashSet<string> keep)
+        {
+            if (keep == null) return;
+            string playing = _player != null ? _player.CurrentPath : null;
+            Dispatcher.Run(() => ImageCache.Prune(keep, playing), n => { if (n > 0) OperationsPlugin.Log.LogInfo("Media cache: removed " + n + " old file(s)."); }, err => { });
+        }
 
         private void Update()
         {
@@ -261,7 +297,7 @@ namespace Operations.Client
         {
             byte[] bytes = ImageCache.TryGet(m.Sha);
             if (bytes != null) return bytes;
-            bytes = Api.Media(missionId, m.Index);
+            bytes = Api.MediaFile(missionId, m.Index, m.Size, m.Sha);
             if (bytes != null && bytes.Length > 0) ImageCache.Put(bytes);
             return bytes;
         }
@@ -348,6 +384,23 @@ namespace Operations.Client
                 var fitter = holder.gameObject.AddComponent<AspectRatioFitter>(); fitter.aspectMode = AspectRatioFitter.AspectMode.WidthControlsHeight; fitter.aspectRatio = (float)tex.width / tex.height;
                 UiKit.Size(holder, 120, 480, 840);
                 var le = holder.GetComponent<LayoutElement>(); le.flexibleWidth = 0;
+            }
+            foreach (MediaRef mr in d.Media)
+            {
+                if (mr.Type != "audio" && mr.Type != "video") continue;
+                MediaRef m = mr; bool video = m.Type == "video"; string key = d.Id + ":" + m.Index;
+                bool on = _player != null && (_player.IsAudioPlaying(key) || _player.IsVideoPlaying(key));
+                UiKit.Section(p, video ? "VIDEO" : "VOICE MESSAGE");
+                if (video && on && _player.VideoTexture != null)
+                {
+                    RectTransform vh = UiKit.Rect("Video", p);
+                    var vr = vh.gameObject.AddComponent<RawImage>(); vr.texture = _player.VideoTexture; vr.raycastTarget = false;
+                    var vf = vh.gameObject.AddComponent<AspectRatioFitter>(); vf.aspectMode = AspectRatioFitter.AspectMode.WidthControlsHeight; vf.aspectRatio = 16f / 9f;
+                    UiKit.Size(vh, 120, 470, 840); vh.GetComponent<LayoutElement>().flexibleWidth = 0;
+                }
+                string d0 = d.Id;
+                Button pb = UiKit.ActionBtn(p, on ? "STOP" : (video ? "PLAY VIDEO" : "PLAY VOICE") + "   (" + Mb(m.Size) + ")", () => PlayMedia(d0, m), UiKit.Shade(UiKit.Gold, 0.55f), 17);
+                UiKit.Size(pb, 46, 46, 360);
             }
             SetStatus("", false);
         }
@@ -441,6 +494,12 @@ namespace Operations.Client
             else
             {
                 UiKit.Label(p, s.Gate ?? "Go to voice / private chat with your squad commander and wait for authorization.", 16, UiKit.Amber);
+                if (s.GateAudio != null)
+                {
+                    MediaRef ga = s.GateAudio; string d1 = d.Id; bool on = _player != null && _player.IsAudioPlaying(d.Id + ":gate");
+                    Button gb = UiKit.ActionBtn(p, on ? "STOP" : "PLAY VOICE MESSAGE", () => PlayMedia(d1, ga), UiKit.Shade(UiKit.Gold, 0.55f), 16);
+                    UiKit.Size(gb, 44, 44, 340);
+                }
             }
         }
 
