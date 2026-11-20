@@ -103,9 +103,20 @@ namespace Operations.Client
         }
 
         // ------------------------------------------------------------------------------------------------ public
+        private static string Sig(Inbox b)
+        {
+            var sb = new StringBuilder();
+            foreach (InboxItem i in b.Items)
+                sb.Append(i.Id).Append('|').Append(i.Unread ? 1 : 0).Append(i.Status).Append(i.Level).Append(i.Label).Append(i.Rev)
+                  .Append(i.Squad != null ? (i.Squad.AllOnline ? "o" : "x") + i.Squad.State + (i.Squad.IsCommander ? "c" : "") : "").Append(';');
+            return sb.ToString();
+        }
+        private string _sig = "";
+
         public void SetInbox(Inbox inbox)
         {
             _inbox = inbox ?? new Inbox();
+            string sig = Sig(_inbox); bool same = sig == _sig; _sig = sig;
             // another profile logged in (profile switch): nothing cached for the previous one may be shown
             if (!string.IsNullOrEmpty(_inbox.Profile) && _inbox.Profile != _profile)
             {
@@ -124,7 +135,7 @@ namespace Operations.Client
                     if (it.Id == _selected) staleSelected = true;
                 }
             }
-            if (IsOpen) { RebuildList(); if (staleSelected && !_busy) Refresh(_selected, true); }
+            if (IsOpen) { if (!same) RebuildList(); if (staleSelected && !_busy) Refresh(_selected, true); } // an unchanged poll must not rebuild (and flicker) the list
         }
 
         public void Show(string selectId, bool autoOpen)
