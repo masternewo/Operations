@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Operations.Client
 {
-    [BepInPlugin("com.operations.client", "Operations Client", "0.8.0")]
+    [BepInPlugin("com.operations.client", "Operations Client", "0.8.1")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     public class OperationsPlugin : BaseUnityPlugin
     {

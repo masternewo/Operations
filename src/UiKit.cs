@@ -12,7 +12,7 @@ namespace Operations.Client
         // Two looks, switched by the admin ("Interface style" in the panel settings):
         //   classic = dark steel panels with muted gold (what the game menu already looks like)
         //   modern  = graphite plates with cut corners, moss green accents and brass highlights
-        public static Color Dim = new Color(0f, 0f, 0f, 0.78f);
+        public static Color Dim = new Color(0f, 0f, 0f, 0.97f);
         public static Color Panel = new Color(0.075f, 0.082f, 0.09f, 0.97f);
         public static Color Panel2 = new Color(0.115f, 0.125f, 0.135f, 1f);
         public static Color Line = new Color(0.27f, 0.29f, 0.3f, 1f);
@@ -33,7 +33,7 @@ namespace Operations.Client
             Modern = modern;
             if (modern)
             {
-                Dim = new Color(0.02f, 0.025f, 0.02f, 0.82f);
+                Dim = new Color(0.02f, 0.025f, 0.02f, 0.97f);
                 Panel = new Color(0.07f, 0.075f, 0.08f, 0.98f);
                 Panel2 = new Color(0.105f, 0.115f, 0.12f, 1f);
                 Line = new Color(0.21f, 0.23f, 0.24f, 1f);
@@ -46,7 +46,7 @@ namespace Operations.Client
             }
             else
             {
-                Dim = new Color(0f, 0f, 0f, 0.78f);
+                Dim = new Color(0f, 0f, 0f, 0.97f);
                 Panel = new Color(0.075f, 0.082f, 0.09f, 0.97f);
                 Panel2 = new Color(0.115f, 0.125f, 0.135f, 1f);
                 Line = new Color(0.27f, 0.29f, 0.3f, 1f);

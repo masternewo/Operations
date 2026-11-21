@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Linq.Expressions;
 using System.Collections;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -78,16 +80,35 @@ namespace Operations.Client
                 MethodInfo gs = app == null ? null : app.GetType().GetMethod("GetClientBackEndSession", Any);
                 object session = gs != null ? gs.Invoke(app, null) : null;
                 if (session == null) { done("no session"); return; }
-                MethodInfo req = null;
+                MethodInfo req = null; bool cb = false;
                 foreach (MethodInfo m in session.GetType().GetMethods(Any))
                     if (m.Name.IndexOf("QuestsTemplates", StringComparison.OrdinalIgnoreCase) >= 0 && m.GetParameters().Length == 0) { req = m; break; }
                 if (req == null)
                 {
-                    var names = new System.Text.StringBuilder();
+                    // this build: RequestQuestsTemplates(x) takes one argument; when it is a callback delegate we can answer it ourselves
                     foreach (MethodInfo m in session.GetType().GetMethods(Any))
-                        if (m.Name.IndexOf("Quest", StringComparison.OrdinalIgnoreCase) >= 0) names.Append(m.Name).Append('(').Append(m.GetParameters().Length).Append(") ");
-                    OperationsPlugin.Log.LogWarning("TrySync: no parameterless *QuestsTemplates method on " + session.GetType().FullName + ". Quest methods: " + names);
+                    {
+                        if (m.Name.IndexOf("QuestsTemplates", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        ParameterInfo[] ps = m.GetParameters();
+                        OperationsPlugin.Log.LogInfo("TrySync: " + m.ReturnType + " " + m.Name + "(" + string.Join(", ", ps.Select(p => p.ParameterType + " " + p.Name).ToArray()) + ")");
+                        if (ps.Length == 1 && typeof(Delegate).IsAssignableFrom(ps[0].ParameterType)) { req = m; cb = true; break; }
+                    }
+                }
+                if (req == null)
+                {
+                    OperationsPlugin.Log.LogWarning("TrySync: no usable *QuestsTemplates method on " + session.GetType().FullName);
                     done("template request unavailable"); return;
+                }
+                if (cb)
+                {
+                    Type dt = req.GetParameters()[0].ParameterType; MethodInfo inv = dt.GetMethod("Invoke");
+                    if (inv == null || inv.ReturnType != typeof(void) || inv.GetParameters().Length != 1) { OperationsPlugin.Log.LogWarning("TrySync: callback shape " + dt + " is not supported"); done("template request unavailable"); return; }
+                    ParameterExpression arg = Expression.Parameter(inv.GetParameters()[0].ParameterType, "r");
+                    Action<object> got = payload => Dispatcher.Post(() => Apply(ctl, payload, questId, done));
+                    Delegate d = Expression.Lambda(dt, Expression.Invoke(Expression.Constant(got), Expression.Convert(arg, typeof(object))), arg).Compile();
+                    object ret = req.Invoke(session, new object[] { d });
+                    var rt = ret as Task; if (rt != null) rt.ContinueWith(t => { if (t.IsFaulted) OperationsPlugin.Log.LogWarning("TrySync request failed: " + t.Exception); });
+                    return;
                 }
                 object res = req.Invoke(session, null);      // only starts the request; never blocks the game thread
                 var task = res as Task;
