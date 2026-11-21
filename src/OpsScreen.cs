@@ -153,7 +153,7 @@ namespace Operations.Client
 
         // ---- voice / video -------------------------------------------------------------------------------------------------
         private MediaPlayer _player;
-        private MediaPlayer Player { get { if (_player == null) { _player = gameObject.AddComponent<MediaPlayer>(); _player.OnMessage = m => SetStatus(m, true); } return _player; } }
+        private MediaPlayer Player { get { if (_player == null) { _player = gameObject.AddComponent<MediaPlayer>(); _player.OnMessage = m => SetStatus(m, true); _player.OnEnded = () => RefreshView(); } return _player; } }
         private static string ExtOf(MediaRef m) { string e = Path.GetExtension(m.File ?? ""); return string.IsNullOrEmpty(e) ? "bin" : e.TrimStart('.').ToLowerInvariant(); }
         private static string Mb(long n) { return n >= 1048576 ? (n / 1048576f).ToString("0.0") + " MB" : Mathf.Max(1, (int)(n / 1024)) + " KB"; }
         private void RefreshView() { Dossier cur; if (_selected != null && _opened.TryGetValue(_selected, out cur) && cur != null) { Clear(_dossierContent); BuildDossier(cur); } }
@@ -165,7 +165,7 @@ namespace Operations.Client
             if (_player != null && (_player.IsAudioPlaying(key) || _player.IsVideoPlaying(key))) { _player.StopAll(); RefreshView(); return; }
             if (_busy) return;
             string ext = ExtOf(m); bool video = m.Type == "video";
-            Action<string> start = p => { if (video) Player.PlayVideo(key, p); else Player.PlayAudio(key, p); RefreshView(); };
+            Action<string> start = p => { if (video) Player.PlayVideo(key, p, m.Volume); else Player.PlayAudio(key, p, m.Volume); RefreshView(); };
             string path = ImageCache.PathFor(m.Sha, m.Size, ext);
             if (path != null) { start(path); return; }
             _busy = true; SetStatus((video ? "Downloading video " : "Downloading voice message ") + Mb(m.Size) + " ...", false);
@@ -179,11 +179,11 @@ namespace Operations.Client
         }
 
         /// <summary>Server-driven clean-up of the local media cache (files of finished / removed missions).</summary>
-        public void PruneCache(HashSet<string> keep)
+        public void PruneCache(HashSet<string> keep, int minAgeHours = 24)
         {
             if (keep == null) return;
             string playing = _player != null ? _player.CurrentPath : null;
-            Dispatcher.Run(() => ImageCache.Prune(keep, playing), n => { if (n > 0) OperationsPlugin.Log.LogInfo("Media cache: removed " + n + " old file(s)."); }, err => { });
+            Dispatcher.Run(() => ImageCache.Prune(keep, playing, minAgeHours), n => { if (n > 0) OperationsPlugin.Log.LogInfo("Media cache: removed " + n + " old file(s)."); }, err => { });
         }
 
         private void Update()
@@ -219,7 +219,7 @@ namespace Operations.Client
             {
                 InboxItem item = it;
                 bool sel = item.Id == _selected;
-                Button b = UiKit.Btn(_listContent, "", () => { _selected = item.Id; RebuildList(); ShowSelected(false); }, sel ? new Color(0.2f, 0.21f, 0.2f, 1f) : UiKit.Panel);
+                Button b = UiKit.Btn(_listContent, "", () => { if (_selected != item.Id && _player != null) _player.StopAll(); _selected = item.Id; RebuildList(); ShowSelected(false); }, sel ? new Color(0.2f, 0.21f, 0.2f, 1f) : UiKit.Panel);
                 UiKit.Size(b, 74, 74);
                 foreach (Transform c in b.transform) c.gameObject.SetActive(false); // drop the default centered label
                 Image stripe = UiKit.Box(b.transform, "Stripe", item.Critical ? UiKit.Red : UiKit.Gold); stripe.raycastTarget = false;

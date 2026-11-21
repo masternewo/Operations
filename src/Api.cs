@@ -22,6 +22,7 @@ namespace Operations.Client
         public string Profile, Theme = "classic";
         public int Unread, Critical;
         public List<InboxItem> Items = new List<InboxItem>();
+        public int PruneAfterHours = 24; // keep unlisted files this long after their last use
         public HashSet<string> Keep;   // hashes still needed by the player's missions (null = server did not say)
     }
 
@@ -36,7 +37,7 @@ namespace Operations.Client
         public List<SquadMember> Members = new List<SquadMember>();
     }
 
-    internal sealed class MediaRef { public int Index; public string Type, File, Sha; public long Size; }
+    internal sealed class MediaRef { public int Index, Volume = 60; public string Type, File, Sha; public long Size; }
     internal sealed class ItemRef { public string Tpl; public int Count; }
 
     internal sealed class Dossier
@@ -75,6 +76,7 @@ namespace Operations.Client
             if (d == null || d.Type != JTokenType.Object) return box;
             box.Enabled = d.Value<bool?>("enabled") == true;
             box.Profile = d.Value<string>("profile");
+            box.PruneAfterHours = d.Value<int?>("pruneAfterHours") ?? 24;
             if (d["keep"] is JArray kp) { box.Keep = new HashSet<string>(); foreach (JToken k in kp) box.Keep.Add((string)k); }
             box.Theme = d.Value<string>("theme") == "modern" ? "modern" : "classic";
             box.Unread = d.Value<int?>("unread") ?? 0;
@@ -127,7 +129,7 @@ namespace Operations.Client
                 Id = s.Value<string>("id"), Name = s.Value<string>("name"), Commander = s.Value<string>("commander"), Gate = s.Value<string>("gate"),
                 IsCommander = s.Value<bool?>("isCommander") == true, AllOnline = s.Value<bool?>("allOnline") == true
             };
-            JToken ga = s["gateAudio"]; if (ga != null && ga.Type == JTokenType.Object) v.GateAudio = new MediaRef { Index = -1, Type = ga.Value<string>("kind") ?? "audio", Sha = ga.Value<string>("sha"), Size = ga.Value<long?>("size") ?? 0, File = "gate." + (ga.Value<string>("ext") ?? "mp3") };
+            JToken ga = s["gateAudio"]; if (ga != null && ga.Type == JTokenType.Object) v.GateAudio = new MediaRef { Index = -1, Type = ga.Value<string>("kind") ?? "audio", Sha = ga.Value<string>("sha"), Size = ga.Value<long?>("size") ?? 0, File = "gate." + (ga.Value<string>("ext") ?? "mp3"), Volume = ga.Value<int?>("volume") ?? 60 };
             JToken b = s["briefing"];
             if (b != null) { v.State = b.Value<string>("state") ?? "waiting"; v.StartAt = b.Value<long?>("startAt") ?? 0; v.ServerNow = b.Value<long?>("serverNow") ?? 0; v.By = b.Value<string>("by"); }
             if (s["members"] is JArray ms)
@@ -150,7 +152,7 @@ namespace Operations.Client
             if (b != null && b.Type == JTokenType.Object)
             {
                 o.Sender = b.Value<string>("sender"); o.Subject = b.Value<string>("subject"); o.Body = b.Value<string>("body");
-                if (b["media"] is JArray ma) foreach (JToken m in ma) o.Media.Add(new MediaRef { Index = m.Value<int?>("index") ?? 0, Type = m.Value<string>("type"), File = m.Value<string>("file"), Sha = m.Value<string>("sha"), Size = m.Value<long?>("size") ?? 0 });
+                if (b["media"] is JArray ma) foreach (JToken m in ma) o.Media.Add(new MediaRef { Index = m.Value<int?>("index") ?? 0, Type = m.Value<string>("type"), File = m.Value<string>("file"), Sha = m.Value<string>("sha"), Size = m.Value<long?>("size") ?? 0, Volume = m.Value<int?>("volume") ?? 60 });
             }
             if (d["objectives"] is JArray ob) foreach (JToken t in ob) o.Objectives.Add((string)t);
             if (d["loadout"] is JArray lo) foreach (JToken t in lo) o.Loadout.Add(new ItemRef { Tpl = t.Value<string>("tpl"), Count = t.Value<int?>("count") ?? 1 });

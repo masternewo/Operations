@@ -21,27 +21,37 @@ namespace Operations.Client
         public string CurrentPath;             // never pruned while playing
         public RenderTexture VideoTexture { get; private set; }
         public Action<string> OnMessage = delegate { };
+        public Action OnEnded = delegate { };   // playback finished by itself (not stopped by the user)
+        private bool _audioStarted, _videoEnded;
 
         public bool IsAudioPlaying(string key) { return AudioKey == key && _audio != null && _audio.isPlaying; }
         public bool IsVideoPlaying(string key) { return VideoKey == key; }
 
         private AudioSource Audio()
         {
-            if (_audio == null) { _audio = gameObject.AddComponent<AudioSource>(); _audio.playOnAwake = false; _audio.spatialBlend = 0f; _audio.volume = 0.9f; _audio.ignoreListenerPause = true; }
+            if (_audio == null) { _audio = gameObject.AddComponent<AudioSource>(); _audio.playOnAwake = false; _audio.spatialBlend = 0f; _audio.volume = 0.6f; _audio.ignoreListenerPause = true; }
             return _audio;
+        }
+
+        private void Update()
+        {
+            // end of a voice message / video: release everything so the dossier can fold the video away and the file is free again
+            if (_audioStarted && VideoKey == null && AudioKey != null && _audio != null && !_audio.isPlaying) { StopAll(); OnEnded(); return; }
+            if (_videoEnded) { _videoEnded = false; StopAll(); OnEnded(); }
         }
 
         public void StopAll()
         {
+            _audioStarted = false; _videoEnded = false;
             if (_audio != null) _audio.Stop();
             AudioKey = null;
             StopVideo();
             CurrentPath = null;
         }
 
-        public void PlayAudio(string key, string path)
+        public void PlayAudio(string key, string path, int volume = 60)
         {
-            StopAll(); AudioKey = key; CurrentPath = path;
+            StopAll(); AudioKey = key; CurrentPath = path; Audio().volume = Mathf.Clamp01(volume / 100f);
             StartCoroutine(LoadAudio(path));
         }
 
@@ -54,13 +64,13 @@ namespace Operations.Client
                 if (!string.IsNullOrEmpty(req.error)) { OnMessage("Voice message cannot be played: " + req.error); AudioKey = null; yield break; }
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
                 if (clip == null || AudioKey == null) { AudioKey = null; yield break; }
-                AudioSource a = Audio(); a.clip = clip; a.Play();
+                AudioSource a = Audio(); a.clip = clip; a.Play(); _audioStarted = true;
             }
         }
 
-        public void PlayVideo(string key, string path)
+        public void PlayVideo(string key, string path, int volume = 60)
         {
-            StopAll(); VideoKey = key; CurrentPath = path;
+            StopAll(); VideoKey = key; CurrentPath = path; Audio().volume = Mathf.Clamp01(volume / 100f);
             try { StartVideo(path); }
             catch (Exception e) { OperationsPlugin.Log.LogWarning("Video playback unavailable: " + e.Message); OnMessage("This game build cannot play the video."); VideoKey = null; }
         }
@@ -76,7 +86,7 @@ namespace Operations.Client
             vp.audioOutputMode = VideoAudioOutputMode.AudioSource; vp.EnableAudioTrack(0, true); vp.SetTargetAudioSource(0, Audio());
             vp.prepareCompleted += p => { if (VideoKey != null) p.Play(); };
             vp.errorReceived += (p, msg) => { OperationsPlugin.Log.LogWarning("Video error: " + msg); OnMessage("The video cannot be played (" + msg + ")."); VideoKey = null; };
-            vp.loopPointReached += p => { VideoKey = null; };
+            vp.loopPointReached += p => { _videoEnded = true; };
             vp.Prepare();
             _video = go;
         }

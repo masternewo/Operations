@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Operations.Client
 {
-    [BepInPlugin("com.operations.client", "Operations Client", "0.7.0")]
+    [BepInPlugin("com.operations.client", "Operations Client", "0.8.0")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     public class OperationsPlugin : BaseUnityPlugin
     {
@@ -93,7 +93,7 @@ namespace Operations.Client
             _inbox = inbox ?? new Inbox();
             if (UiKit.SetTheme(_inbox.Theme)) RebuildUi(); // the admin switched the interface style
             _screen.SetInbox(_inbox);
-            if (_inbox.Keep != null && Time.unscaledTime >= _nextPrune) { _nextPrune = Time.unscaledTime + 600f; _screen.PruneCache(_inbox.Keep); }
+            if (_inbox.Keep != null && Time.unscaledTime >= _nextPrune) { _nextPrune = Time.unscaledTime + 600f; _screen.PruneCache(_inbox.Keep, _inbox.PruneAfterHours); }
             _tab.SetCount(_inbox.Enabled ? _inbox.Unread : 0);
 
             InboxItem pick = null; string title = null, sub = null; bool critical = false;

@@ -56,7 +56,7 @@ namespace Operations.Client
                 Directory.CreateDirectory(Dir);
                 string file = Path.Combine(Dir, sha + "." + ext); string tmp = file + ".tmp";
                 File.WriteAllBytes(tmp, bytes);
-                if (File.Exists(file)) File.Delete(file);
+                if (File.Exists(file)) { try { File.Delete(file); } catch (Exception) { File.Delete(tmp); return sha; } } // already cached and in use: keep it
                 File.Move(tmp, file);
                 Trim();
                 return sha;
@@ -87,8 +87,10 @@ namespace Operations.Client
             {
                 string file = Path.Combine(Dir, sha + "." + ext);
                 var fi = new FileInfo(file);
-                if (!fi.Exists || (size > 0 && fi.Length != size)) return null;
-                File.SetLastWriteTimeUtc(file, DateTime.UtcNow);
+                if (!fi.Exists) return null;
+                if (size > 0 && fi.Length != size) { OperationsPlugin.Log.LogInfo("Media cache: " + fi.Name + " has " + fi.Length + " bytes, expected " + size + "; downloading again."); return null; }
+                // touching the timestamp can fail while a player still holds the file open; that must never turn a cached file into a re-download
+                try { File.SetLastWriteTimeUtc(file, DateTime.UtcNow); } catch (Exception) { /* in use */ }
                 return file;
             }
             catch (Exception) { return null; }
@@ -98,7 +100,7 @@ namespace Operations.Client
         /// Coordinated clean-up: the server lists the hashes of every file the player may still need (current missions). Everything else
         /// (finished/removed/archived missions, replaced files, half-written downloads) is deleted here; the server keeps its archive.
         /// </summary>
-        public static int Prune(System.Collections.Generic.ICollection<string> keep, string playingPath)
+        public static int Prune(System.Collections.Generic.ICollection<string> keep, string playingPath, int minAgeHours = 24)
         {
             int removed = 0;
             try
@@ -109,7 +111,8 @@ namespace Operations.Client
                     if (playingPath != null && string.Equals(f.FullName, playingPath, StringComparison.OrdinalIgnoreCase)) continue;
                     string sha = Path.GetFileNameWithoutExtension(f.Name);
                     bool tmp = f.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow - f.LastWriteTimeUtc > TimeSpan.FromMinutes(10);
-                    if (tmp || (IsHash(sha) && !keep.Contains(sha))) { TryDelete(f.FullName); removed++; }
+                    bool old = DateTime.UtcNow - f.LastWriteTimeUtc > TimeSpan.FromHours(Math.Max(0, minAgeHours));
+                    if (tmp || (old && IsHash(sha) && !keep.Contains(sha))) { TryDelete(f.FullName); removed++; }
                 }
             }
             catch (Exception) { /* clean-up is best effort */ }
